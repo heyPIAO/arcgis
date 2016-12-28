@@ -11,10 +11,10 @@ dojo.require("esri/SpatialReference");
 * @arg2 options 地图初始化选项，详见arcgis for javascript官方api：http://jshelp.thinkgis.cn/jsapi/map-amd.html
 */
 function EsriMap(id,options) {
- 	//this._map = new esri.Map(id,options);
- 	this._map = new esri.Map(id,{
- 		basemap:"topo"
- 	});
+ 	this._map = new esri.Map(id,options);
+ 	// this._map = new esri.Map(id,{
+ 	// 	basemap:"topo"
+ 	// });
 }
 
 EsriMap.prototype = {
@@ -87,19 +87,19 @@ EsriMap.prototype = {
 	* 设置地图中心点函数
 	* @arg1 lon 中心点经度
 	* @arg2 lat 中心点纬度
-	* @arg3 zoom? zoom level: nullable,默认为地图当前的层级
-	* tip: 默认为4326或者Web Mercator
+	* @arg4 spatialReference? 空间参考系: nullable, 默认为经纬度坐标即spatialreference为4326
     **/
-	setCenter:function(lon,lat,zoom){
+	setCenter:function(lon,lat,spatialreference){
 		
 		var point = new esri.geometry.Point(lon,lat);
 
-		if(zoom){
-			this._map.centerAndZoom(point,zoom);
+		if(spatialreference){
+			point.setSpatialReference(spatialreference);
 		} else {
-			this._map.centerAt(point);
+			point.setSpatialReference(this._map.spatialreference);
 		}
 
+		this._map.centerAt(point);
 	},
 
 	/**
@@ -125,10 +125,16 @@ EsriMap.prototype = {
 	* 将屏幕坐标转换为经纬度坐标
 	* @arg1 x
 	* @arg2 y
+	* @arg3 spatialreference? 空间参考: nullable
 	* Return Type: 数组，按顺序分别为中心点的横坐标与纵坐标（经纬度坐标或者是投影坐标，具体看数据）
 	**/
-	screenToGeocode:function(x,y){
+	screenToGeocode:function(x,y,spatialreference){
 		var point = this._map.toMap(new esri.geometry.ScreenPoint(x,y));
+		if(spatialreference){
+			point.setSpatialReference(spatialreference);
+		} else {
+			point.setSpatialReference(this._map.spatialreference);
+		}
 		var result = new Array();
 		result.push(point.x);
 		result.push(point.y);
@@ -143,11 +149,11 @@ EsriMap.prototype = {
 	* Return Type: 数组，按顺序分别为屏幕坐标x和y
 	**/
 	geocodeToScreen:function(lon,lat,spatialreference){
-		var point;
+		var point = new esri.geometry.Point(lon,lat);
 		if(spatialreference){
-			point = new esri.geometry.Point(lon,lat,spatialreference);
+			point.setSpatialReference(spatialreference);
 		} else {
-			point = new esri.geometry.Point(lon,lat,this._map.spatialreference);
+			point.setSpatialReference(this._map.spatialreference);
 		}
 		var screenPoint = this._map.toScreen(point);
 		var result = new Array();
