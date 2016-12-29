@@ -1,14 +1,18 @@
 dojo.require("esri/map");
 dojo.require("esri/layers/ArcGISDynamicMapServiceLayer");
 dojo.require("esri/layers/ArcGISImageServiceLayer");
+dojo.require("esri/layers/ArcGISTiledMapServiceLayer");
+dojo.require("esri/layers/FeatureLayer");
+dojo.require("esri/layers/WMSLayer");
+dojo.require("esri/layers/WMTSLayer");
 dojo.require("esri/geometry/Point");
 dojo.require("esri/geometry/ScreenPoint");
 dojo.require("esri/SpatialReference");
 
 /*
-* 初始化一个map对象
+* 新封装一个map类
 * @arg1 id 容纳地图容器的div的id
-* @arg2 options 地图初始化选项，详见arcgis for javascript官方api：http://jshelp.thinkgis.cn/jsapi/map-amd.html
+* @arg2 options 地图初始化选项: nullable 详见arcgis for javascript官方api：http://jshelp.thinkgis.cn/jsapi/map-amd.html
 */
 function EsriMap(id,options) {
  	this._map = new esri.Map(id,options);
@@ -24,34 +28,34 @@ EsriMap.prototype = {
 	* @arg1 type 地图种类
     * @arg2 url 地图服务的完整url路径,对于
     * @arg3 地图渲染的options,详见arcgis for javascript官方api：https://developers.arcgis.com/javascript/3/jsapi/arcgisdynamicmapservicelayer-amd.html
+    * ReturnType：返回图层id
     **/
     addLayer:function(type,url,options){
     	switch(type){
     		case "ArcGISDynamicMapServiceLayer":
-    			this._map.addLayer(new esri.layers.ArcGISDynamicMapServiceLayer(url,options));
-    			break;
+    			var tmp = new esri.layers.ArcGISDynamicMapServiceLayer(url,options);
+    			this._map.addLayer(tmp);
+    			return tmp.id;
 			case "ArcGISImageServiceLayer": 
-    			this._map.addLayer(new esri.layers.ArcGISImageServiceLayer(url,options));
-				break;
+				var tmp = new esri.layers.ArcGISImageServiceLayer(url,options);
+    			this._map.addLayer(tmp);
+    			return tmp.id;
 			case "FeatureLayer":
-				this._map.addLayer(new esri.layers.FeatureLayer(url,options));
-				break;
+				var tmp = new esri.layers.FeatureLayer(url,options);
+				this._map.addLayer(tmp);
+				return tmp.id;
 			case "WMSLayer":
-				this._map.addLayer(new esri.layers.WMSLayer(url,options));
-				break;
+				var tmp = new esri.layers.WMSLayer(url,options);
+				this._map.addLayer(tmp);
+				return tmp.id;
 			case "WMTSLayer":
-				this._map.addLayer(new esri.layers.WMTSLayer(url,options));
-				break;
-			// case "graphicslayer":
-			// 	this._map.addLayer(new esri.layers.GraphicsLayer(url,options));
-			// 	break;
-			// case "tilelayer": 
-			// 	this_map.addLayer(new esri.layers.ArcGISTiledMapServiceLayer(url,options));
-			// 	break;
-			// case "vectortilelayer": 
-			// 	this._map.addLayer(new esri.layers.WebTiledLayer(url,options));
-			// 	break;
-			// case "maptilelayer": break;
+				var tmp  = new esri.layers.WMTSLayer(url,options);
+				this._map.addLayer(tmp);
+				return tmp.id;
+			case "ArcGISTiledMapServiceLayer":
+				var tmp = new esri.layers.ArcGISTiledMapServiceLayer(url,options);
+				this._map.addLayer(tmp);
+				return tmp.id;
 			default: 
 				console.error("Not support this kind of map service yet"); 
 				break;
@@ -160,8 +164,74 @@ EsriMap.prototype = {
 		result.push(screenPoint.x);
 		result.push(screenPoint.y);
 		return result;
+	},
+
+	/**
+	* 设置鼠标光标
+	* @arg1 图片路径或ArcGIS支持的光标参数,若为空,则设置为默认值;若值无法找到或不符合规则，则仍为默认光标
+	**/
+	setCursor:function(cursor){
+		if(cursor){
+			this._map.setMapCursor(cursor + ",default");
+		} else {
+			this._map.setMapCursor("default");
+		}
+	},
+
+
+	/**
+	* 设置图层名称函数
+	* @arg1 图层id
+	* @arg2 图层名称
+	* ReturnType: Boolean
+	**/
+	setLayerName:function(id,name){
+		this._map.getLayer(id).name = name;
+		return true;
+	},
+
+	/**
+	* 获取所有图层名
+	* Return Type：三大种类的所有图层id和name的Array
+	* 说明：map中的图层有三类：basemaplayer，graphiclayer和普通的地图服务layer;
+	*	   graphicsLayerId 管理地图上的FeatureLayer图层和GraphicLayer图层的id;
+	*	   basemapLayerId 管理basemap的图层id;
+	*  	   layerId 管理地图上非graphicsLayerId的其他地图图层的id,包含basemaplayerId。
+	* 注意：name并非图层的必有属性，必须要调用setLayerName()显示设置以后才会有,否则其值为undefined
+	**/
+	getLayersName:function(){
+
+		var result = new Array();
+		var basemaplayers = new Array();
+		var graphiclayers = new Array();
+		var layers = new Array();
+
+		for(baselayerid in this._map.basemapLayerIds){
+			basemaplayers.push({"id":this._map.basemapLayerIds[baselayerid],"name":this._map.getLayer(this._map.basemapLayerIds[baselayerid]).name});
+		}
+
+		for(graphiclayerid in this._map.graphicsLayerIds){
+			graphiclayers.push({"id":this._map.basemapLayerIds[graphiclayerid],"name":this._map.getLayer(this._map.basemapLayerIds[graphiclayerid]).name});
+		}
+
+		for(layerid in this._map.layerIds){
+			layers.push({"id":this._map.layerIds[layerid],"name":this._map.getLayer(this._map.layerIds[layerid]).name});
+		}
+
+		result.push({"type":"basemapLayerIds","value":basemaplayers});
+		result.push({"type":"graphicsLayerIds","value":graphiclayers});
+		result.push({"type":"layerIds","value":layers});
+
+		return result;
 	}
 
+	/**
+	* 利用经纬度添加单个点
+	* ReturnType：
+	**/
+	addPoint:function(lon,lat){
+		
+	}
 }
 
 
