@@ -2,20 +2,27 @@ dojo.require("esri/map");
 dojo.require("esri/layers/ArcGISDynamicMapServiceLayer");
 dojo.require("esri/layers/ArcGISImageServiceLayer");
 dojo.require("esri/layers/ArcGISTiledMapServiceLayer");
+dojo.require("esri/layers/TiledMapServiceLayer");
 dojo.require("esri/layers/FeatureLayer");
 dojo.require("esri/layers/WMSLayer");
 dojo.require("esri/layers/WMTSLayer");
 dojo.require("esri/geometry/Point");
 dojo.require("esri/geometry/ScreenPoint");
 dojo.require("esri/SpatialReference");
-
+dojo.require("esri/symbols/MarkerSymbol");
+dojo.require("esri/graphic");
+dojo.require("esri/symbols/PictureMarkerSymbol");
+dojo.require("esri/symbols/SimpleMarkerSymbol");
 /*
 * 新封装一个map类
 * @arg1 id 容纳地图容器的div的id
-* @arg2 options 地图初始化选项: nullable 详见arcgis for javascript官方api：http://jshelp.thinkgis.cn/jsapi/map-amd.html
+* @arg2 options 地图初始化选项: optional 详见arcgis for javascript官方api：http://jshelp.thinkgis.cn/jsapi/map-amd.html
 */
 function EsriMap(id,options) {
  	this._map = new esri.Map(id,options);
+
+ 	this.mapOnClickHandler = new Object();
+ 	this.mapOnDoubleClickHandler = new Object();
  	// this._map = new esri.Map(id,{
  	// 	basemap:"topo"
  	// });
@@ -50,6 +57,10 @@ EsriMap.prototype = {
 				return tmp.id;
 			case "WMTSLayer":
 				var tmp  = new esri.layers.WMTSLayer(url,options);
+				this._map.addLayer(tmp);
+				return tmp.id;
+			case "TiledMapServiceLayer":
+				var tmp = new esri.layers.TiledMapServiceLayer(url,options);
 				this._map.addLayer(tmp);
 				return tmp.id;
 			case "ArcGISTiledMapServiceLayer":
@@ -91,7 +102,7 @@ EsriMap.prototype = {
 	* 设置地图中心点函数
 	* @arg1 lon 中心点经度
 	* @arg2 lat 中心点纬度
-	* @arg4 spatialReference? 空间参考系: nullable, 默认为经纬度坐标即spatialreference为4326
+	* @arg4 spatialReference? 空间参考系: optional, 默认为经纬度坐标即spatialreference为4326
     **/
 	setCenter:function(lon,lat,spatialreference){
 		
@@ -129,7 +140,7 @@ EsriMap.prototype = {
 	* 将屏幕坐标转换为经纬度坐标
 	* @arg1 x
 	* @arg2 y
-	* @arg3 spatialreference? 空间参考: nullable
+	* @arg3 spatialreference? 空间参考: optional
 	* Return Type: 数组，按顺序分别为中心点的横坐标与纵坐标（经纬度坐标或者是投影坐标，具体看数据）
 	**/
 	screenToGeocode:function(x,y,spatialreference){
@@ -149,7 +160,7 @@ EsriMap.prototype = {
 	* 将地理坐标转换为屏幕坐标
 	* @arg1 lon 经度
 	* @arg2 lat 纬度
-	* @arg3 spatialreference? 空间参考 nullable
+	* @arg3 spatialreference? 空间参考 optional
 	* Return Type: 数组，按顺序分别为屏幕坐标x和y
 	**/
 	geocodeToScreen:function(lon,lat,spatialreference){
@@ -223,14 +234,160 @@ EsriMap.prototype = {
 		result.push({"type":"layerIds","value":layers});
 
 		return result;
-	}
+	},
 
 	/**
 	* 利用经纬度添加单个点
-	* ReturnType：
+	* @arg1 经度
+	* @arg2 纬度
+	* @arg3 点id
+	* @arg4 点渲染器: optional
+	* @arg5 空间参考: optional 若为空,默认为当前地图的空间参考
 	**/
-	addPoint:function(lon,lat){
-		
+	drawPoint:function(lon,lat,id,symbol,spatialreference){
+		var point;
+		if(spatialreference){
+			point = new Point(lon,lat,spatialreference,id);
+		} else {
+			point = new Point(lon,lat,this._map.spatialReference,id);
+		}
+		if(symbol){
+			point.setSymbol(this.param.symbol);
+		}
+		var graphic = new esri.Graphic(point._point,point._symbol);
+		this._map.graphics.add(graphic);
+	},
+
+	/**
+	* 利用json添加多个点
+	* @arg1 data: 经纬度和id组成的json
+	* @arg2 symbol: optional
+	* @arg3 spatialreference: optional
+	**/
+	drawMultiPoint:function(data,symbol,spatialreference){
+		obj = JSON.parse(data);
+		var point;
+		var graphic;
+		for(i in obj){
+			if(spatialreference){
+				point = new Point(obj[i].lon,obj[i].lat,spatialreference,obj[i].id);
+			} else {
+				point = new Point(obj[i].lon,obj[i].lat,this._map.spatialReference);
+			}
+			if(symbol){
+				point.setSymbol(this.param.symbol);
+			}	
+			graphic = new esri.Graphic(point._point,point._symbol);
+			this._map.graphics.add(graphic);
+		}
+	},
+
+	drawPointByClick:function(evt){
+		var point;
+		if(this.param.spatialreference){
+			point = new Point(evt.mapPoint.x,evt.mapPoint.y,this.param.spatialreference,this.param.id);
+		} else {
+			point = new Point(evt.mapPoint.x,evt.mapPoint.y,this.param.map.spatialReference,this.param.id);
+		}
+		if(this.param.symbol){
+			point.setSymbol(this.param.symbol);
+		}
+		var graphic = new esri.Graphic(point._point,point._symbol);
+		this.param.map.graphics.add(graphic);
+	},
+
+	/**
+	* 打开地图上单击添加点事件
+	**/
+	startAddPoint:function(id,symbol,spatialreference){
+		var param = new Object();
+		param.id = id;
+		param.symbol = symbol;
+		param.spatialreference = spatialreference;
+		param.map = this._map;
+
+		mapOnClickHandler = dojo.connect(this._map,"onClick",{"param":param},this.drawPointByClick);
+	},
+
+	/**
+	* 结束地图上单击添加点事件
+	**/
+	stopAddPoint:function(){
+		dojo.disconnect(mapOnClickHandler);
+	}
+}
+
+/**
+* 封装Point类
+* @arg1: lat
+* @arg2: lon
+* @arg3: spatialreference
+* @arg4: id
+**/
+function Point(lon,lat,spatialreference,id) {
+	this._point = new esri.geometry.Point(lon,lat); 
+	if(spatialreference){
+		this._point.setSpatialReference(spatialreference);
+	}
+	this._symbol = new esri.symbol.SimpleMarkerSymbol();
+	this._formerSymbol = new esri.symbol.SimpleMarkerSymbol();
+	this._id = id;
+}
+
+Point.prototype={
+
+	/**
+	* 设置点的Symbol
+	* @arg1: 点渲染器
+	**/
+	setSymbol:function(symbol){
+		this._formerSymbol = this._symbol;
+		this._symbol = symbol;
+	},
+
+	setId:function(id){
+		this._id = id;
+	}
+
+}
+
+/**
+* 简单点渲染器
+* @arg1 options: optional,样式选择的json, 可选样式详情请见arcgis for javascript的API：http://jshelp.thinkgis.cn/jsapi/simplemarkersymbol-amd.html
+**/
+function SimMarkerSymbol(options){
+	this._symbol = new esri.symbol.SimpleMarkerSymbol(options);
+}
+
+SimMarkerSymbol.prototype = {
+
+	/**
+	* 设置点角度函数
+	* @arg1 点角度
+	**/
+	setAngle:function(angle){
+		this._symbol.setAngle(angle);
+	}
+}
+
+/**
+* 图片点渲染器
+* @arg1 图片url
+* @arg2 图片宽度(in pixels)
+* @arg3 图片高度(in pixels)
+**/
+function PicMarkerSymbol(url,width,height){
+	this._symbol = new esri.symbol.PictureMarkerSymbol(url,width,height);
+}
+
+PicMarkerSymbol.prototype = {
+
+	/**
+	* 设置点角度函数
+	* @arg1 点角度
+	**/
+	setAngle:function(angle){
+		this._symbol.setAngle(angle);
 	}
 }
 

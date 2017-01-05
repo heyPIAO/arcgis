@@ -6,6 +6,7 @@
 
 
 <link rel="stylesheet" href="http://jsapi.thinkgis.cn/esri/css/esri.css">
+<script src="./libjs/jquery-3.1.1.min.js"></script>
 <script src="http://jsapi.thinkgis.cn/init.js"></script>
 <script src="./js/api.js"></script>
 <script src="./js/index.js"></script>
@@ -26,11 +27,16 @@
 			<button onClick=testSetCursor("url(images/cursors/halo.cur)")>设置光标样式</button>
 			<button onClick=testSetCursor()>光标样式变为默认</button>
 			<button onClick=testGetLayersName()>获取图层名称</button>
+			<p>
+			<button onClick=testAddPoint(590438.9599952165,3377665.4707631157,"testPoint")>添加点</button>
+			<button onClick=testAddMultiPoint()>添加多点</button>
+			<p>
+			<button onClick=testStartAddPoint("test")>开始画点</button>
+			<button onClick=testStopAddPoint()>结束画点</button>
 		</div>
 		<div  id="mapContainer" style="position:absolute;width:100%;height:100%;z-index=-1">
 			<div id="basemap" style="width:100%;height:100%; float: left"></div>
 		</div>
-
   </div> 
 </body>
 </html>
