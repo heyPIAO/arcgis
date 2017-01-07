@@ -1,5 +1,8 @@
 dojo.require("esri/map");
+dojo.require("esri/Color");
+
 dojo.require("esri/layers/ArcGISDynamicMapServiceLayer");
+dojo.require("esri/layers/GraphicsLayer");
 dojo.require("esri/layers/ArcGISImageServiceLayer");
 dojo.require("esri/layers/ArcGISTiledMapServiceLayer");
 dojo.require("esri/layers/TiledMapServiceLayer");
@@ -7,12 +10,19 @@ dojo.require("esri/layers/FeatureLayer");
 dojo.require("esri/layers/WMSLayer");
 dojo.require("esri/layers/WMTSLayer");
 dojo.require("esri/geometry/Point");
+dojo.require("esri/geometry/Polyline");
 dojo.require("esri/geometry/ScreenPoint");
+dojo.require("esri/geometry/Circle");
+
 dojo.require("esri/SpatialReference");
 dojo.require("esri/symbols/MarkerSymbol");
 dojo.require("esri/graphic");
 dojo.require("esri/symbols/PictureMarkerSymbol");
 dojo.require("esri/symbols/SimpleMarkerSymbol");
+dojo.require("esri/symbols/LineSymbol");
+dojo.require("esri/symbols/SimpleLineSymbol");
+dojo.require("esri/toolbars/draw");
+
 /*
 * 新封装一个map类
 * @arg1 id 容纳地图容器的div的id
@@ -22,10 +32,21 @@ function EsriMap(id,options) {
  	this._map = new esri.Map(id,options);
 
  	this.mapOnClickHandler = new Object();
+ 	this.graphicSelecteOnClickHandler = new Object();
+ 	this.graphicDeleteOnClickHander = new Object();
  	this.mapOnDoubleClickHandler = new Object();
+
+ 	//初始化toolbar编辑器
+ 	this._toolbar = new esri.toolbars.Draw(this._map);
  	// this._map = new esri.Map(id,{
  	// 	basemap:"topo"
  	// });
+	this.selectedGraphic = new esri.Graphic();
+	this.selectedPointSymbol = new esri.symbol.SimpleMarkerSymbol(esri.symbol.SimpleMarkerSymbol.STYLE_SQUARE,20,
+    new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]), 1),
+    new esri.Color([0,255,0,0.25]));
+	//TODO 还需添加selectedLineSymbol和selectedPolygonSymbol
+	this.selectedGraphicLayer = new esri.layers.GraphicsLayer({id:"selectedGraphicLayer",opacity:1});
 }
 
 EsriMap.prototype = {
@@ -255,6 +276,7 @@ EsriMap.prototype = {
 			point.setSymbol(this.param.symbol);
 		}
 		var graphic = new esri.Graphic(point._point,point._symbol);
+		graphic.id = point._id;
 		this._map.graphics.add(graphic);
 	},
 
@@ -264,7 +286,7 @@ EsriMap.prototype = {
 	* @arg2 symbol: optional
 	* @arg3 spatialreference: optional
 	**/
-	drawMultiPoint:function(data,symbol,spatialreference){
+	drawMultiPoint:function(ids,data,symbol,spatialreference){
 		obj = JSON.parse(data);
 		var point;
 		var graphic;
@@ -272,7 +294,7 @@ EsriMap.prototype = {
 			if(spatialreference){
 				point = new Point(obj[i].lon,obj[i].lat,spatialreference,obj[i].id);
 			} else {
-				point = new Point(obj[i].lon,obj[i].lat,this._map.spatialReference);
+				point = new Point(obj[i].lon,obj[i].lat,this._map.spatialReference,obj[i].id);
 			}
 			if(symbol){
 				point.setSymbol(this.param.symbol);
@@ -293,11 +315,15 @@ EsriMap.prototype = {
 			point.setSymbol(this.param.symbol);
 		}
 		var graphic = new esri.Graphic(point._point,point._symbol);
+		graphic.id = point._id;
 		this.param.map.graphics.add(graphic);
 	},
 
 	/**
 	* 打开地图上单击添加点事件
+	* @arg1 id 线的id
+	* @arg2 symbol, 点的symbol
+	* @arg3 spatialreference 参考系: optional
 	**/
 	startAddPoint:function(id,symbol,spatialreference){
 		var param = new Object();
@@ -306,15 +332,167 @@ EsriMap.prototype = {
 		param.spatialreference = spatialreference;
 		param.map = this._map;
 
-		mapOnClickHandler = dojo.connect(this._map,"onClick",{"param":param},this.drawPointByClick);
+		this.mapOnClickHandler = dojo.connect(this._map,"onClick",{"param":param},this.drawPointByClick);
 	},
 
 	/**
 	* 结束地图上单击添加点事件
 	**/
-	stopAddPoint:function(){
-		dojo.disconnect(mapOnClickHandler);
+	stopAddPoint:function() {
+		dojo.disconnect(this.mapOnClickHandler);
+		this.mapOnClickHandler = new Object();
+	},
+
+	/**
+	* 开始在地图上选graphic
+	**/
+	startSelectGraphic:function() {
+		//dojo.disconnect(mapOnClickHandler);
+		var param = new Object();
+		param.esrimap = this;
+		this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
+		this._map.addLayer(this.selectedGraphicLayer);
+		this.selectedGraphicLayer.visible=true
+		param.map = this._map;
+		this.graphicSelecteOnClickHandler = dojo.connect(this._map.graphics,"onClick",{"param":param},this.selectGraphicByClick);
+	},
+
+	/**
+	* 点击选中graphic，graphic包括所有添加在graphiclayer上的点线面
+	* 返回点的id
+	**/
+	selectGraphicByClick:function(evt){
+		//console.log(evt);
+		this.param.esrimap.selectedGraphicLayer.remove(this.param.esrimap.selectedGraphic);
+		switch(evt.graphic.geometry.type){
+			case "point":
+				//同样的位子再打一个点标示选中
+				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
+				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPointSymbol;
+				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
+				this.param.esrimap.selectedGraphicLayer.redraw();
+				break;
+			case "polyline": break;
+			case "polygon": break;
+			//TODO 暂时这两个,可能还需要再添加
+		}
+
+		return evt.graphic.id;
+	},
+
+	/**
+	* 停止在地图上选点
+	**/
+	stopSelectGraphic:function(){
+		//this.selectedGraphicLayer.hide();
+		//this._map.graphics.hide();
+		this.selectedGraphicLayer.remove(this.selectedGraphic);
+		this._map.removeLayer(this.selectedGraphicLayer);
+		//this.selectedGraphic =  new esri.Graphic();
+		dojo.disconnect(this.graphicSelecteOnClickHandler);
+		this.graphicSelecteOnClickHandler = new Object();
+	},
+
+	/**
+	* 开始在地图上删除graphic
+	**/
+	startDeleteGraphic:function(){
+		var param = new Object();
+		//dojo.disconnect(mapOnClickHandler);
+		param.esrimap = this;
+		//this._map.addLayer(this.selectedGraphicLayer);
+		param.map = this._map;
+		this.graphicDeleteOnClickHander = dojo.connect(this._map.graphics,"onClick",{"param":param},this.deleteGraphicByClick);
+	},
+
+	deleteGraphicByClick:function(evt){
+		this.param.map.graphics.remove(evt.graphic);
+	},
+
+	/**
+	* 结束在地图上删除graphic
+	**/
+	stopDeleteGraphic:function(){
+		dojo.disconnect(this.graphicDeleteOnClickHander);
+		this.graphicDeleteOnClickHander = new Object();
+	},
+
+	/**
+	* 删除所有的graphic
+	* @type graphic的类型:optional
+	**/
+	clearGraphic:function(type){
+		var loop=0;
+		var gra = new Array();
+		switch(type){
+			case "point": 
+				loop = this._map.graphics.graphics.length;
+				for (var i=0;i<loop;i++){
+					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point"){
+						this._map.graphics.remove((this._map.graphics.graphics[i]));
+						loop--;
+						i--;
+					}
+				};
+				break;
+			case "polyline": break;
+				loop = this._map.graphics.graphics.length;
+				for (var i=0;i<loop;i++){
+					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline"){
+						this._map.graphics.remove((this._map.graphics.graphics[i]));
+						loop--;
+						i--;
+					}
+				};
+			case "polygon": break;
+		}
+	},
+
+	/**
+	* 在地图上添加线函数
+	**/
+	addPolyline:function(id,coordinates,symbol,spatialreference){
+		var line = new Polyline(id,coordinates,symbol,spatialreference);
+		if(spatialreference){
+			line.setSpatialReference(this._map.spatialReference);
+		}
+		var graphic = new esri.Graphic(line._line,line._symbol);
+		graphic.id = line._id;
+		this._map.graphics.add(graphic);
 	}
+
+
+
+	/**
+	* 开始在地图上画线
+	* @arg1 线渲染器: optional
+	* @arg2 画线参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
+	**/
+	// startDrawLine:function(linesymbol,options){
+
+	// 	this._toolbar.activate(esri.toolbars.Draw.POLYLINE,options);
+
+	// 	// if(pointsymbol){
+	// 	// 	this._toolbar.setMarkerSymbol(pointsymbol);
+	// 	// } else {
+	// 	// 	this._toolbar.setMarkerSymbol(esri.symbol.SimpleMarkerSymbol());
+	// 	// }
+	// 	var symbol;
+
+	// 	if(linesymbol){
+	// 		this._toolbar.setLineSymbol(linesymbol);
+	// 		symbol = linesymbol;
+	// 	} else {
+	// 		this._toolbar.setLineSymbol(new esri.symbol.SimpleLineSymbol());
+	// 		symbol = new esri.symbol.SimpleLineSymbol();
+	// 	}
+
+	// 	that = this;
+	// 	this._toolbar.on("draw-end",function(evt){
+	// 		var graphic = new esri.Graphic(evt.geometry,symbol);
+ //    		that._map.graphics.add(graphic);
+	// 	});
+	// }
 }
 
 /**
@@ -329,12 +507,13 @@ function Point(lon,lat,spatialreference,id) {
 	if(spatialreference){
 		this._point.setSpatialReference(spatialreference);
 	}
+	this._point.id = id;
 	this._symbol = new esri.symbol.SimpleMarkerSymbol();
 	this._formerSymbol = new esri.symbol.SimpleMarkerSymbol();
 	this._id = id;
 }
 
-Point.prototype={
+Point.prototype = {
 
 	/**
 	* 设置点的Symbol
@@ -347,8 +526,43 @@ Point.prototype={
 
 	setId:function(id){
 		this._id = id;
-	}
+	},
 
+	setSpatialReference:function(spatialreference){
+		this._point.setSpatialReference(spatialreference);
+	}
+}
+
+/**
+* 封装Polyline类
+* @arg1: id
+* @arg2: coordinates 坐标点的array，形如[[-50, 0], [-120, -20], [-130, 0]]
+* @arg3: lineSymbol 线渲染器
+* @arg4: spatialreference
+**/
+function Polyline(id,coordinates,spatialreference) {
+	this._line = new esri.geometry.Polyline(coordinates);
+	this._line.id = id;
+	this._id = id;
+	this._symbol = new esri.symbol.SimpleLineSymbol();
+	if(spatialreference){
+		this._line.setSpatialReference(spatialreference);
+	}
+}
+
+Polyline.prototype = {
+	
+	setSymbol:function(symbol){
+		this._symbol = symbol;
+	},
+
+	setId:function(id){
+		this._id = id;
+	},
+
+	setSpatialReference:function(spatialreference){
+		this._line.setSpatialReference(spatialreference);
+	}
 }
 
 /**

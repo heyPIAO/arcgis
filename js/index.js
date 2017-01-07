@@ -56,3 +56,30 @@ function testStartAddPoint(id){
 function testStopAddPoint(){
 	map.stopAddPoint();
 }
+
+function testSelectGraphic(){
+	map.startSelectGraphic();
+}
+
+function testStopSelectGraphic(){
+	map.stopSelectGraphic();
+}
+
+function testAddPolyline(id,coordinates,symbol,spatialreference){
+	coordinates = new Array();
+	coordinates.push([590036.5823106212,3378004.926107082]);
+	coordinates.push([591010.1723839608,3379232.055262021]);
+	map.addPolyline(id,coordinates,symbol,spatialreference);
+}
+
+function testStartDeleteGraphic(){
+	map.startDeleteGraphic();
+}
+
+function testStopDeleteGraphic(){
+	map.stopDeleteGraphic();
+}
+
+function deleteAllPoint(){
+	map.clearGraphic("point");
+}
