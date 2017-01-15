@@ -1,3 +1,6 @@
+dojo.require("esri/symbols/SimpleMarkerSymbol");
+dojo.require("esri/Color");
+dojo.require("esri/symbols/SimpleLineSymbol");
 var map;
 
 function init(id){
@@ -45,7 +48,9 @@ function testAddPoint(lon,lat,id,symbol,spatialreference) {
 }
 
 function testAddMultiPoint(){
-	var json = "[{\"lat\": \"3377665.4707631157\",\"lon\": \"590438.9599952165\",\"id\": \"testPoint\"}]";
+	var json = "[{\"lat\": \"3378004.926107082\",\"lon\": \"590036.5823106212\",\"id\": \"testPoint\"},"
+	 + "{\"lat\": \"3379232.055262021\",\"lon\": \"591010.1723839608\",\"id\": \"testPoint\"}]";
+	console.log(json);
 	map.drawMultiPoint(json);
 }
 
@@ -69,7 +74,14 @@ function testAddPolyline(id,coordinates,symbol,spatialreference){
 	coordinates = new Array();
 	coordinates.push([590036.5823106212,3378004.926107082]);
 	coordinates.push([591010.1723839608,3379232.055262021]);
-	map.addPolyline(id,coordinates,symbol,spatialreference);
+	map.addPolyline(id,coordinates,symbol,false,null,null,spatialreference);
+}
+
+function testAddPolylineWithArrow(id,coordinates,symbol,spatialreference){
+	coordinates = new Array();
+	coordinates.push([590036.5823106212,3378004.926107082]);
+	coordinates.push([591010.1723839608,3379232.055262021]);
+	map.addPolyline(id,coordinates,symbol,true,20,2,spatialreference);
 }
 
 function testStartDeleteGraphic(){
@@ -82,4 +94,19 @@ function testStopDeleteGraphic(){
 
 function deleteAllPoint(){
 	map.clearGraphic("point");
+}
+
+function testChangeSymbol(){
+	map.changeSymbol("testPoint",new esri.symbol.SimpleMarkerSymbol(esri.symbol.SimpleMarkerSymbol.STYLE_SQUARE, 10,
+    new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+    new esri.Color([255,0,0]), 1),
+    new esri.Color([0,255,0,0.25])));
+}
+
+function testBackSymbol(){
+	map.backToFormerSymbol();
+}
+
+function testUpdatePoint(){
+	map.updatePoint("testPoint",590438.9599952165,3377665.4707631157);
 }

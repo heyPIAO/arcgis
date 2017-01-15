@@ -259,11 +259,11 @@ EsriMap.prototype = {
 
 	/**
 	* 利用经纬度添加单个点
-	* @arg1 经度
-	* @arg2 纬度
-	* @arg3 点id
-	* @arg4 点渲染器: optional
-	* @arg5 空间参考: optional 若为空,默认为当前地图的空间参考
+	* @arg1 lon: 经度
+	* @arg2 lat: 纬度
+	* @arg3 id: 点id
+	* @arg4 symbol: 点渲染器 optional
+	* @arg5 spatialreference: 空间参考 optional 若为空,默认为当前地图的空间参考
 	**/
 	drawPoint:function(lon,lat,id,symbol,spatialreference){
 		var point;
@@ -277,6 +277,7 @@ EsriMap.prototype = {
 		}
 		var graphic = new esri.Graphic(point._point,point._symbol);
 		graphic.id = point._id;
+		graphic.formerSymbol = point._formerSymbol;
 		this._map.graphics.add(graphic);
 	},
 
@@ -286,7 +287,7 @@ EsriMap.prototype = {
 	* @arg2 symbol: optional
 	* @arg3 spatialreference: optional
 	**/
-	drawMultiPoint:function(ids,data,symbol,spatialreference){
+	drawMultiPoint:function(data,symbol,spatialreference){
 		obj = JSON.parse(data);
 		var point;
 		var graphic;
@@ -300,6 +301,8 @@ EsriMap.prototype = {
 				point.setSymbol(this.param.symbol);
 			}	
 			graphic = new esri.Graphic(point._point,point._symbol);
+			graphic.id = point._id;
+			graphic.formerSymbol = point._formerSymbol;
 			this._map.graphics.add(graphic);
 		}
 	},
@@ -316,6 +319,7 @@ EsriMap.prototype = {
 		}
 		var graphic = new esri.Graphic(point._point,point._symbol);
 		graphic.id = point._id;
+		graphic.formerSymbol = point._formerSymbol;
 		this.param.map.graphics.add(graphic);
 	},
 
@@ -406,7 +410,20 @@ EsriMap.prototype = {
 	},
 
 	deleteGraphicByClick:function(evt){
-		this.param.map.graphics.remove(evt.graphic);
+		switch(evt.graphic.geometry.type){
+			case "point":
+				this.param.map.graphics.remove(evt.graphic);
+				break;
+			case "polyline":
+				if(evt.graphic._isArrow){
+					this.param.map.graphics.remove(evt.graphic._arrowGraphic);
+				}
+				this.param.map.graphics.remove(evt.graphic);
+				break;
+			case "polygon":
+				break;
+		}
+		
 	},
 
 	/**
@@ -435,7 +452,7 @@ EsriMap.prototype = {
 					}
 				};
 				break;
-			case "polyline": break;
+			case "polyline":
 				loop = this._map.graphics.graphics.length;
 				for (var i=0;i<loop;i++){
 					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline"){
@@ -444,24 +461,184 @@ EsriMap.prototype = {
 						i--;
 					}
 				};
+				break;
 			case "polygon": break;
 		}
 	},
 
 	/**
 	* 在地图上添加线函数
+	* 说明: symbol中可以设置线颜色，线宽度，线类型
+	* @arg1 id: 线id
+	* @arg2 coordinates: 线的坐标
+	* @arg3 symbol
+	* @arg4 isArrow: 是否要添加箭头
+	* @arg5 arrowSize: 箭头的大小
+	* @arg6 arrowPosition: 箭头的位置 1起始处添加,2中间添加,3结尾处添加
+	* @arg7 spatialreference
 	**/
-	addPolyline:function(id,coordinates,symbol,spatialreference){
+	addPolyline:function(id,coordinates,symbol,isArrow,arrowSize,arrowPosition,spatialreference){
 		var line = new Polyline(id,coordinates,symbol,spatialreference);
 		if(spatialreference){
 			line.setSpatialReference(this._map.spatialReference);
 		}
 		var graphic = new esri.Graphic(line._line,line._symbol);
 		graphic.id = line._id;
+		if(isArrow){
+			line._isArrow = isArrow;
+			line._arrowSize = arrowSize;
+			line._arrowPosition = arrowPosition;
+			graphic._isArrow = isArrow;
+			//设置箭头的位置
+			var arrowPoint = line._line.getPoint(0,1);
+			switch(arrowPosition){
+				case 1:
+					arrowPoint = line._line.getPoint(0,0); //获得线的第一个点
+					arrowPoint.setSpatialReference = this._map.spatialReference;
+					break;
+				case 2:
+					var start = line._line.getPoint(0,0);
+					var end = line._line.getPoint(0,1); 
+					var lon = (start.getLongitude() + end.getLongitude())/2;
+					var lat = (start.getLatitude() + end.getLatitude())/2;
+					arrowPoint = new esri.geometry.Point(lon,lat);
+					arrowPoint.setSpatialReference = this._map.spatialReference;
+					break;
+				case 3:
+					arrowPoint = line._line.getPoint(0,1); //获得线的最后一个点
+					arrowPoint.setSpatialReference = this._map.spatialReference;
+					break;
+			}
+			//画箭头
+			//首先将起点、终点和arrowPoint点都转换为屏幕坐标
+			var screenStart = this._map.toScreen(line._line.getPoint(0,0));
+			var screenEnd = this._map.toScreen(line._line.getPoint(0,1));
+			var screenArrow = this._map.toScreen(arrowPoint);
+			var angle = Math.PI/5; //暂定箭头角度为36度
+
+			var end1 = new esri.geometry.ScreenPoint(0,0);
+			var end2 = new esri.geometry.ScreenPoint(0,0);
+
+			//临时点
+			var screenTemp = new esri.geometry.ScreenPoint(0,0);
+			
+			//斜率不存在时
+			if(screenEnd.x == screenStart.x){
+				screenTemp.setX(screenEnd.x);
+				if(screenEnd.y>screenStart.y) {  
+    				screenTemp.setY(screenEnd.y - arrowSize); 
+    			} else {  
+    				screenTemp.setY(screenEnd.y + arrowSize);   
+    			}
+				end1.setX(pixelTemX - arrowSize*Math.tan(angle));
+				end1.setY(screenTemp.y);
+				end2.setX(pixelTemX + arrowSize*Math.tan(angle));
+				end2.setY(screenTemp.y);
+			} else {
+				//斜率存在时
+				var delta = (screenEnd.y - screenStart.y)/(screenEnd.x - screenStart.x);
+				var param = Math.sqrt(delta*delta + 1);
+				if(screenEnd.x < screenStart.x){
+					//第2、3象限
+					screenTemp.setX(screenEnd.x + arrowSize/param);
+					screenTemp.setY(screenEnd.y + delta*arrowSize/param);
+				} else {
+					//第1、4象限
+					screenTemp.setX(screenEnd.x - arrowSize/param);
+					screenTemp.setY(screenEnd.y - delta*arrowSize/param);
+				}
+				//已知直角三角形两个点坐标及其中一个角，求另外一个点坐标算法
+    			end1.setX(screenTemp.x + Math.tan(angle)*arrowSize*delta/param);
+    			end1.setY(screenTemp.y - Math.tan(angle)*arrowSize/param);
+
+    			end2.setX(screenTemp.x - Math.tan(angle)*arrowSize*delta/param);
+    			end2.setY(screenTemp.y + Math.tan(angle)*arrowSize/param);
+			}
+
+			//将箭头平移
+			var deltaX = screenEnd.x - screenArrow.x;
+			var deltaY = screenEnd.y - screenArrow.y;
+			end1.setX(end1.x - deltaX);
+			end1.setY(end1.y - deltaY);
+			end2.setX(end2.x - deltaX);
+			end2.setY(end2.y - deltaY);
+
+
+			//将end1和end2转为地图坐标
+			var geoend1 = this._map.toMap(end1);
+			var geoend2 = this._map.toMap(end2);
+
+			//绘Arrow的Polyline
+			var arrowLine = new esri.geometry.Polyline(this._map.spatialReference);
+			var arrowPoints = new Array();
+			arrowPoints.push(geoend1);
+			arrowPoints.push(arrowPoint);
+			arrowPoints.push(geoend2);
+			arrowLine.addPath(arrowPoints);
+
+			arrowLine.id = line._id + "_arrow";
+			//绘Arrow的Graphic
+			var arrowGraphic =  new esri.Graphic(arrowLine,line._symbol);
+			arrowGraphic.id = arrowLine.id;
+			line._arrowGraphic = arrowGraphic;
+			graphic._arrowGraphic = arrowGraphic;
+			this._map.graphics.add(arrowGraphic);
+		}
 		this._map.graphics.add(graphic);
+		return line;
+	},
+
+	/**
+	* 根据ID更改graphic的symbol
+	**/
+	changeSymbol:function(id,symbol) {
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+				this._map.graphics.graphics[i].formerSymbol = this._map.graphics.graphics[i].symbol;
+				this._map.graphics.graphics[i].setSymbol(symbol);
+				break;
+			}
+		};
+		this._map.graphics.redraw();
+	},
+
+	/**
+	* 对于地图上的所有点，更新点到之前的样式
+	**/
+	backToFormerSymbol:function(){
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point"){
+				if(this._map.graphics.graphics[i].formerSymbol!=this._map.graphics.graphics[i].symbol){
+					var tmp = this._map.graphics.graphics[i].symbol;
+					this._map.graphics.graphics[i].setSymbol(this._map.graphics.graphics[i].formerSymbol);
+					this._map.graphics.graphics[i].formerSymbol = tmp;
+				}
+			}
+		};
+		this._map.graphics.redraw();
+	},
+
+	/**
+	* 更新点位置
+	* @arg1 id
+	* @arg2 lon: 新的经度
+	* @arg3 lat: 新的纬度
+	**/
+	updatePoint:function(id,lon,lat){
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && this._map.graphics.graphics[i].geometry.id==id){
+				var tmp = esri.geometry.Point(this._map.graphics.graphics[i].geometry);
+				tmp.update(lon,lat);
+				//console.log(tmp);
+				this._map.graphics.graphics[i].setGeometry(tmp);
+			}
+			break;
+		};
+		this._map.graphics.redraw();
 	}
-
-
 
 	/**
 	* 开始在地图上画线
@@ -530,6 +707,15 @@ Point.prototype = {
 
 	setSpatialReference:function(spatialreference){
 		this._point.setSpatialReference(spatialreference);
+	},
+
+	/**
+	* 更改至原先的Symbol
+	**/
+	backSymbol:function(){
+		var tmp = this._symbol;
+		this._symbol = this._formerSymbol;
+		this._formerSymbol = this._symbol;
 	}
 }
 
@@ -545,9 +731,14 @@ function Polyline(id,coordinates,spatialreference) {
 	this._line.id = id;
 	this._id = id;
 	this._symbol = new esri.symbol.SimpleLineSymbol();
+	this._symbol.setWidth(3);
 	if(spatialreference){
 		this._line.setSpatialReference(spatialreference);
 	}
+	this._isArrow = false;
+	this._arrowSize = 0;
+	this._arrowPosition = 1;
+	this._arrowGraphic = null;
 }
 
 Polyline.prototype = {
