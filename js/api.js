@@ -11,6 +11,7 @@ dojo.require("esri/layers/WMSLayer");
 dojo.require("esri/layers/WMTSLayer");
 dojo.require("esri/geometry/Point");
 dojo.require("esri/geometry/Polyline");
+dojo.require("esri/geometry/Polygon");
 dojo.require("esri/geometry/ScreenPoint");
 dojo.require("esri/geometry/Circle");
 
@@ -21,8 +22,14 @@ dojo.require("esri/symbols/PictureMarkerSymbol");
 dojo.require("esri/symbols/SimpleMarkerSymbol");
 dojo.require("esri/symbols/LineSymbol");
 dojo.require("esri/symbols/SimpleLineSymbol");
-dojo.require("esri/toolbars/draw");
 
+dojo.require("esri/toolbars/draw");
+dojo.require("esri/toolbars/edit");
+dojo.require("dojo/_base/event");
+
+var editingEnabled = false;
+var editBar;
+var drawBar;
 /*
 * 新封装一个map类
 * @arg1 id 容纳地图容器的div的id
@@ -35,22 +42,32 @@ function EsriMap(id,options) {
  	this.graphicSelecteOnClickHandler = new Object();
  	this.graphicDeleteOnClickHander = new Object();
  	this.mapOnDoubleClickHandler = new Object();
+ 	this.mapOnEditGraphicHandler = new Object();
 
  	//初始化toolbar编辑器
- 	this._toolbar = new esri.toolbars.Draw(this._map);
+ 	// this._toolbar = new esri.toolbars.Draw(this._map);
+ 	// this._editBar = new esri.toolbars.Edit(this._map);
  	// this._map = new esri.Map(id,{
  	// 	basemap:"topo"
  	// });
 	this.selectedGraphic = new esri.Graphic();
 	this.selectedPointSymbol = new esri.symbol.SimpleMarkerSymbol(esri.symbol.SimpleMarkerSymbol.STYLE_SQUARE,20,
-    new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]), 1),
-    new esri.Color([0,255,0,0.25]));
+    		new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]), 1),
+    		new esri.Color([0,255,0,0.25]));
+    this.selectedPolylineSymbol = new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]),1);
+	this.selectedPolylineSymbol.setWidth(6);
+	this.selectedPolygonSymbol = new esri.symbol.SimpleFillSymbol();
+	this.selectedPolygonSymbol.setColor(new esri.Color([255,255,0,0.5]));
+
 	//TODO 还需添加selectedLineSymbol和selectedPolygonSymbol
 	this.selectedGraphicLayer = new esri.layers.GraphicsLayer({id:"selectedGraphicLayer",opacity:1});
+	this.selectedGraphicLayer.visible = true;
+
+	editBar = new esri.toolbars.Edit(this._map);
+	drawBar = new esri.toolbars.Edit(this._map);
 }
 
-EsriMap.prototype = {
-  	
+EsriMap.prototype = {	
   	/**
 	* 添加地图图层函数
 	* @arg1 type 地图种类
@@ -132,7 +149,7 @@ EsriMap.prototype = {
 		if(spatialreference){
 			point.setSpatialReference(spatialreference);
 		} else {
-			point.setSpatialReference(this._map.spatialreference);
+			point.setSpatialReference(this._map.spatialReference);
 		}
 
 		this._map.centerAt(point);
@@ -169,7 +186,7 @@ EsriMap.prototype = {
 		if(spatialreference){
 			point.setSpatialReference(spatialreference);
 		} else {
-			point.setSpatialReference(this._map.spatialreference);
+			point.setSpatialReference(this._map.spatialReference);
 		}
 		var result = new Array();
 		result.push(point.x);
@@ -189,7 +206,7 @@ EsriMap.prototype = {
 		if(spatialreference){
 			point.setSpatialReference(spatialreference);
 		} else {
-			point.setSpatialReference(this._map.spatialreference);
+			point.setSpatialReference(this._map.spatialReference);
 		}
 		var screenPoint = this._map.toScreen(point);
 		var result = new Array();
@@ -321,6 +338,7 @@ EsriMap.prototype = {
 		graphic.id = point._id;
 		graphic.formerSymbol = point._formerSymbol;
 		this.param.map.graphics.add(graphic);
+		//console.log(graphic);
 	},
 
 	/**
@@ -354,9 +372,6 @@ EsriMap.prototype = {
 		//dojo.disconnect(mapOnClickHandler);
 		var param = new Object();
 		param.esrimap = this;
-		this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
-		this._map.addLayer(this.selectedGraphicLayer);
-		this.selectedGraphicLayer.visible=true
 		param.map = this._map;
 		this.graphicSelecteOnClickHandler = dojo.connect(this._map.graphics,"onClick",{"param":param},this.selectGraphicByClick);
 	},
@@ -367,20 +382,36 @@ EsriMap.prototype = {
 	**/
 	selectGraphicByClick:function(evt){
 		//console.log(evt);
+		if(this.param.map.getLayer("selectedGraphicLayer")==undefined){
+			this.param.esrimap.selectedGraphicLayer.spatialReference = this.param.map.spatialReference;
+			this.param.esrimap.selectedGraphicLayer.visible = true;
+			this.param.map.addLayer(this.param.esrimap.selectedGraphicLayer);
+		}
 		this.param.esrimap.selectedGraphicLayer.remove(this.param.esrimap.selectedGraphic);
 		switch(evt.graphic.geometry.type){
 			case "point":
 				//同样的位子再打一个点标示选中
 				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
 				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPointSymbol;
 				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
 				this.param.esrimap.selectedGraphicLayer.redraw();
 				break;
-			case "polyline": break;
-			case "polygon": break;
-			//TODO 暂时这两个,可能还需要再添加
+			case "polyline": 
+				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
+				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPolylineSymbol;
+				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
+				this.param.esrimap.selectedGraphicLayer.redraw();
+				break;
+			case "polygon": 
+				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
+				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPolygonSymbol;
+				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
+				this.param.esrimap.selectedGraphicLayer.redraw();
+				break;
 		}
-
 		return evt.graphic.id;
 	},
 
@@ -391,10 +422,57 @@ EsriMap.prototype = {
 		//this.selectedGraphicLayer.hide();
 		//this._map.graphics.hide();
 		this.selectedGraphicLayer.remove(this.selectedGraphic);
+		this.selectedGraphicLayer.redraw();
 		this._map.removeLayer(this.selectedGraphicLayer);
 		//this.selectedGraphic =  new esri.Graphic();
 		dojo.disconnect(this.graphicSelecteOnClickHandler);
 		this.graphicSelecteOnClickHandler = new Object();
+	},
+
+	selectGraphicById:function(id){
+		if(this._map.getLayer("selectedGraphicLayer")==undefined){
+			this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
+			this.selectedGraphicLayer.visible = true;
+			this._map.addLayer(this.selectedGraphicLayer);
+		}
+		this.selectedGraphicLayer.remove(this.selectedGraphic);
+		var loop = this._map.graphics.graphics.length;
+		
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+				switch(this._map.graphics.graphics[i].geometry.type){
+					case "point":
+						//同样的位子再打一个点标示选中
+						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.symbol = this.selectedPointSymbol;
+						this.selectedGraphicLayer.add(this.selectedGraphic);
+						this.selectedGraphicLayer.redraw();
+						break;
+					case "polyline":
+						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.symbol = this.selectedPolylineSymbol;
+						this.selectedGraphicLayer.add(this.selectedGraphic);
+						this.selectedGraphicLayer.redraw();
+						break;
+					case "polygon":
+						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.symbol = this.selectedPolygonSymbol;
+						this.selectedGraphicLayer.add(this.selectedGraphic);
+						this.selectedGraphicLayer.redraw();
+						break;
+				}
+				break;
+			}
+		};
+	},
+
+	clearSelectedGraphic:function() {
+		this.selectedGraphicLayer.clear();
+		this.selectedGraphicLayer.redraw();
+		this._map.removeLayer(this.selectedGraphicLayer);
 	},
 
 	/**
@@ -421,9 +499,26 @@ EsriMap.prototype = {
 				this.param.map.graphics.remove(evt.graphic);
 				break;
 			case "polygon":
+				this.param.map.graphics.remove(evt.graphic);
 				break;
 		}
 		
+	},
+
+	/**
+	* 通过id来删除graphic
+	* @arg1 id
+	**/
+	deleteGraphicById:function(id){
+		var loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+				this._map.graphics.remove(this._map.graphics.graphics[i]);
+				return true;
+				break;
+			}
+		};
+		return false;
 	},
 
 	/**
@@ -462,7 +557,16 @@ EsriMap.prototype = {
 					}
 				};
 				break;
-			case "polygon": break;
+			case "polygon": 
+				loop = this._map.graphics.graphics.length;
+				for (var i=0;i<loop;i++){
+					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polygon"){
+						this._map.graphics.remove((this._map.graphics.graphics[i]));
+						loop--;
+						i--;
+					}
+				};
+				break;
 		}
 	},
 
@@ -489,6 +593,8 @@ EsriMap.prototype = {
 			line._arrowSize = arrowSize;
 			line._arrowPosition = arrowPosition;
 			graphic._isArrow = isArrow;
+			graphic._arrowSize = line._arrowSize;
+			graphic._arrowPosition = line._arrowPosition;
 			//设置箭头的位置
 			var arrowPoint = line._line.getPoint(0,1);
 			switch(arrowPosition){
@@ -499,8 +605,8 @@ EsriMap.prototype = {
 				case 2:
 					var start = line._line.getPoint(0,0);
 					var end = line._line.getPoint(0,1); 
-					var lon = (start.getLongitude() + end.getLongitude())/2;
-					var lat = (start.getLatitude() + end.getLatitude())/2;
+					var lon = (start.x + end.x)/2;
+					var lat = (start.y + end.y)/2;
 					arrowPoint = new esri.geometry.Point(lon,lat);
 					arrowPoint.setSpatialReference = this._map.spatialReference;
 					break;
@@ -509,6 +615,7 @@ EsriMap.prototype = {
 					arrowPoint.setSpatialReference = this._map.spatialReference;
 					break;
 			}
+
 			//画箭头
 			//首先将起点、终点和arrowPoint点都转换为屏幕坐标
 			var screenStart = this._map.toScreen(line._line.getPoint(0,0));
@@ -591,16 +698,17 @@ EsriMap.prototype = {
 	/**
 	* 根据ID更改graphic的symbol
 	**/
-	changeSymbol:function(id,symbol) {
+	changePointSymbol:function(id,symbol) {
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
 			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
 				this._map.graphics.graphics[i].formerSymbol = this._map.graphics.graphics[i].symbol;
 				this._map.graphics.graphics[i].setSymbol(symbol);
+				this._map.graphics.redraw();
+				return this._map.graphics.graphics[i];
 				break;
 			}
 		};
-		this._map.graphics.redraw();
 	},
 
 	/**
@@ -634,10 +742,148 @@ EsriMap.prototype = {
 				tmp.update(lon,lat);
 				//console.log(tmp);
 				this._map.graphics.graphics[i].setGeometry(tmp);
+				this._map.graphics.redraw();
+				return this._map.graphics.graphics[i];
+				break;
 			}
-			break;
 		};
-		this._map.graphics.redraw();
+	},
+
+	changePolylineSymbol:function(id,symbol,isArrow,arrowSize,arrowPosition){
+		//首先找到那个graphic
+		var destGraphic;
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline" && this._map.graphics.graphics[i].geometry.id==id){
+				destGraphic = this._map.graphics.graphics[i];
+				this._map.graphics.remove(destGraphic._arrowGraphic);
+				this._map.graphics.remove(destGraphic);
+				if(symbol){
+					destGraphic.symbol = symbol;
+				}
+				if(isArrow==false){
+					destGraphic._isArrow = isArrow;
+					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,null,null,destGraphic.geometry.spatialReference);
+					return line;
+				} else {
+					destGraphic._isArrow = isArrow;
+					this._map.graphics.remove(destGraphic._arrowGraphic);
+					if(arrowSize){
+						destGraphic._arrowSize = arrowSize;
+					}
+					if(arrowPosition){
+						destGraphic._arrowPosition = arrowPosition;
+					}
+					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,destGraphic._arrowSize,destGraphic._arrowPosition,destGraphic.geometry.spatialReference);
+					return line;
+				}
+			}
+		}
+
+		log.error("没有对应id的graphic");
+	},
+
+	/**
+	* 在地图上添加Polygon
+	* @arg1 id
+	* @arg2 coordinates
+	* @arg3 symbol
+	* @arg3 spatialReference
+	**/
+	addPolygon:function(id,coordinates,symbol,spatialReference){
+		var polygon = new Polygon(id,coordinates,symbol,spatialReference);
+		if(!spatialReference){
+			polygon.setSpatialReference(this._map.spatialReference);
+		}
+		var graphic = new esri.Graphic(polygon._polygon,polygon._symbol);
+		graphic.id = polygon._id;
+		this._map.graphics.add(graphic);
+		return id;
+	},
+
+	/**
+	* 更新Polygon
+	* @arg1 id
+	* @arg2 symbol
+	**/
+	updatePolygon:function(id,symbol){
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="polygon"){
+				this._map.graphics.graphics[i].setSymbol(symbol);
+				return this._map.graphics.graphics[i];
+			}
+		};
+		//this._map.graphics.redraw();
+	},
+
+	/**
+	* 判断点是否在多边形内
+	* @arg1 id：多变形id
+	* @arg2 lat
+	* @arg3
+	**/ 
+	containsPoint:function(id,lat,lon){
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="polygon"){
+				return this._map.graphics.graphics[i].geometry.contains(new esri.geometry.Point(lat,lon));
+			}
+		};
+		return false;
+	},
+
+	/*
+	* 开始移动点线面节点
+	*/
+	startEditMoveGraphic:function(){
+		editingEnabled = true;
+		this._map.graphics.on("click",function(evt){
+			//dojo._base.event.stop(evt);
+			if(editingEnabled) {
+				editBar.activate(esri.toolbars.Edit.MOVE|esri.toolbars.Edit.EDIT_VERTICES,evt.graphic);
+			} else {
+				editBar.deactivate();
+			}
+		});
+	},
+
+	/**
+	* 结束移动点线面节点
+	**/
+	stopEditMoveGraphic:function(){
+		editingEnabled = false;
+		editBar.deactivate();
+	},
+
+	/**
+	* 添加扇形
+	**/
+	addSection:function(id,lat,lon,startAngle,angle,radius,symbol) {
+		var sector = new Sector(id,lat,lon,startAngle,angle,radius,symbol,this._map.spatialReference,30);
+		sector.init();
+		var graphicSector = new esri.Graphic(sector._polygon,sector._symbol);
+		graphicSector.id = id;
+		this._map.graphics.add(graphicSector);
+		return sector;
+	},
+
+	/**
+	* 更新扇形
+	**/
+	updateSection:function(id,startAngle,angle,radius,symbol){
+		loop = this._map.graphics.graphics.length;
+		for (var i=0;i<loop;i++){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="polygon" && this._map.graphics.graphics[i].geometry.circletype=="section"){
+				var sec = this._map.graphics.graphics[i];
+				var lat = sec.geometry.center[0];
+				var lon = sec.geometry.center[1];
+				this._map.graphics.remove(this._map.graphics.graphics[i]);
+				var sector = this.addSection(id,lat,lon,startAngle,angle,radius,symbol);
+				return sector;
+			}
+		};
+		return null;
 	}
 
 	/**
@@ -726,12 +972,16 @@ Point.prototype = {
 * @arg3: lineSymbol 线渲染器
 * @arg4: spatialreference
 **/
-function Polyline(id,coordinates,spatialreference) {
+function Polyline(id,coordinates,symbol,spatialreference) {
 	this._line = new esri.geometry.Polyline(coordinates);
 	this._line.id = id;
 	this._id = id;
-	this._symbol = new esri.symbol.SimpleLineSymbol();
-	this._symbol.setWidth(3);
+	if(symbol){
+		this._symbol = symbol;
+	} else {
+		this._symbol = new esri.symbol.SimpleLineSymbol();
+		this._symbol.setWidth(3);
+	}
 	if(spatialreference){
 		this._line.setSpatialReference(spatialreference);
 	}
@@ -753,6 +1003,84 @@ Polyline.prototype = {
 
 	setSpatialReference:function(spatialreference){
 		this._line.setSpatialReference(spatialreference);
+	}
+}
+
+function Polygon(id,coordinate,symbol,spatialReference){
+	this._polygon = new esri.geometry.Polygon(coordinates);
+	this._polygon.id = id;
+	this._id = id;
+	if(symbol){
+		this._symbol = symbol;
+	} else {
+		this._symbol = new esri.symbol.SimpleFillSymbol();
+	}
+	if(spatialReference){
+		this._polygon.spatialReference = spatialReference;
+	}
+}
+
+Polygon.prototype = {
+
+	setSymbol:function(symbol){
+		this._symbol = symbol;
+	},
+
+	setId:function(id){
+		this._id = id;
+	},
+
+	setSpatialReference:function(spatialReference){
+		this._polygon.spatialReference = spatialReference;
+	}
+}
+
+function Sector(id,lat,lon,startAngle,angle,radius,symbol,spatialReference,pointNum){
+	this._id = id;
+	if(symbol){
+		this._symbol = symbol;
+	} else {
+		this._symbol = new esri.symbol.SimpleFillSymbol();
+	}
+	this._spatialReference = spatialReference;
+	this._polygon = null;
+	this._center = new Array();
+	this._center.push(lat);
+	this._center.push(lon);
+	this._pointNum = pointNum;
+	this._startAngle = startAngle;
+	this._endAngle = startAngle + angle;
+	this._radius = radius;
+}
+
+Sector.prototype = {
+	init:function(){
+		var sin;
+		var cos;
+		var x;
+		var y;
+		var angle;
+		var points = new Array();
+		points.push(this._center);
+		for (var i = 0; i <= this._pointNum; i++) {
+ 			angle = this._startAngle + (this._endAngle - this._startAngle) * i / this._pointNum;
+ 			sin = Math.sin(angle * Math.PI / 180);
+			cos = Math.cos(angle * Math.PI / 180);
+			x = this._center[0] + this._radius * sin;
+			y = this._center[1] + this._radius * cos;
+			points.push([x,y]);
+		}
+		var point = points;
+		point.push(this._center);
+		var sector = {"rings": [point],"spatialReference":this._spatialReference};
+		// sector.addRing(point);
+		this._polygon = new esri.geometry.Polygon(sector);
+		this._polygon.circletype = "section";
+		this._polygon.center = this._center;
+		this._polygon.id = this._id;
+	},
+	setSymbol:function(symbol){
+		this._symbol = symbol;
 	}
 }
 
