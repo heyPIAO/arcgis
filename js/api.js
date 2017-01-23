@@ -1,5 +1,6 @@
 dojo.require("esri/map");
 dojo.require("esri/Color");
+dojo.require("esri/geometry/mathUtils");
 
 dojo.require("esri/layers/ArcGISDynamicMapServiceLayer");
 dojo.require("esri/layers/GraphicsLayer");
@@ -63,8 +64,14 @@ function EsriMap(id,options) {
 	this.selectedGraphicLayer = new esri.layers.GraphicsLayer({id:"selectedGraphicLayer",opacity:1});
 	this.selectedGraphicLayer.visible = true;
 
+	this.measureGraphic = new esri.Graphic();
+	this.measureGraphicLayer = new esri.layers.GraphicsLayer({id:"measureGraphicLayer",opacity:1});
+	this.measureGraphicLayer.visible = true;
+
 	editBar = new esri.toolbars.Edit(this._map);
-	drawBar = new esri.toolbars.Edit(this._map);
+	drawBar = new esri.toolbars.Draw(this._map);
+
+	this.defaultPolygonSymbol = new esri.symbol.SimpleFillSymbol();
 }
 
 EsriMap.prototype = {	
@@ -109,6 +116,32 @@ EsriMap.prototype = {
 				console.error("Not support this kind of map service yet"); 
 				break;
     	}
+	},
+
+	/**
+	* 根据layerid获取layerinfo
+	**/
+	getLayerInfo:function(id){
+		return this._map.getLayer(id).layerInfos;
+	},
+
+	/**
+	* 根据id删除图层
+	* @arg1 id
+	**/
+	deleteLayer:function(id,type){
+		this._map.removeLayer(this._map.getLayer(id));
+	},
+
+	/**
+	* 显示或者隐藏图层
+	**/
+	setLayerVisibility:function(id,isVisible){
+		if(isVisible){
+			this._map.getLayer(id).show();
+			return;
+		}
+		this._map.getLayer(id).hide();
 	},
 
 	/**
@@ -839,9 +872,44 @@ EsriMap.prototype = {
 	startEditMoveGraphic:function(){
 		editingEnabled = true;
 		this._map.graphics.on("click",function(evt){
-			//dojo._base.event.stop(evt);
-			if(editingEnabled) {
-				editBar.activate(esri.toolbars.Edit.MOVE|esri.toolbars.Edit.EDIT_VERTICES,evt.graphic);
+			evt.preventDefault();
+			if(editingEnabled){
+				// switch(evt.graphic.geometry.type){
+				// 	case "polyline":
+
+				// 	case "polygon":
+
+				// }
+				var dif = 0
+				if(evt.graphic.geometry.type=="polygon"){
+					dif = 1
+				}
+
+				if(evt.graphic.geometry.type=="polygon" && evt.graphic.geometry.rings[0].length == (3+dif)){
+					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+				} else if(evt.graphic.geometry.type=="polyline" && evt.graphic.geometry.rings[0].length == (3+dif)){
+					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+				} else {
+					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+				}
+
+				//editBar.allowDeletevertices = false;
+				editBar.on("vertex-delete",function(evt){
+					var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
+					if(ring.length == (3+dif) ) {
+						editBar.deactivate();
+						editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+						console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
+					}
+				});
+
+				editBar.on("vertex-add",function(evt){
+					var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
+					if(ring.length > (3+dif) ) {
+						editBar.deactivate();
+						editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+					}
+				});
 			} else {
 				editBar.deactivate();
 			}
@@ -884,38 +952,169 @@ EsriMap.prototype = {
 			}
 		};
 		return null;
-	}
+	},
+
+	/**
+	* 根据id获取点线面的所有点
+	**/
+	getGeometry:function(id) {
+		loop = this._map.graphics.graphics.length;
+		for(var i=0;i<loop;i++) {
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id == id){
+				switch(this._map.graphics.graphics[i].geometry.type){
+					case "point":
+						var result = new Array();
+						result.push({"type":"point"});
+						var points = new Array();
+						points.push(this._map.graphics.graphics[i].geometry.x);
+						points.push(this._map.graphics.graphics[i].geometry.y);
+						result.push({"geometry":points});
+						return result;
+						break;
+					case "polyline":
+						var result = new Array();
+						result.push({"type":"polyline"});
+						var points = this._map.graphics.graphics[i].geometry.paths;
+						result.push({"geometry":points});
+						return result;
+						break;
+					case "polygon":
+						var result = new Array();
+						result.push({"type":"polygon"});
+						var points = this._map.graphics.graphics[i].geometry.rings;
+						result.push({"geometry":points});
+						return result;
+						break;
+				}
+			}
+		}
+		return null;
+	},
 
 	/**
 	* 开始在地图上画线
-	* @arg1 线渲染器: optional
-	* @arg2 画线参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
+	* @arg1 画面的Symbol
+	* @arg2 画面参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
 	**/
-	// startDrawLine:function(linesymbol,options){
+	startDrawPolygonByClick:function(id,symbol,options){
 
-	// 	this._toolbar.activate(esri.toolbars.Draw.POLYLINE,options);
+		var map = this._map;
+		drawBar.activate(esri.toolbars.Draw.POLYGON,options);
+		var polygonSymbol;
+		if(symbol){
+			polygonSymbol = symbol;
+		} else {
+			polygonSymbol = this.defaultPolygonSymbol;
+		}
 
-	// 	// if(pointsymbol){
-	// 	// 	this._toolbar.setMarkerSymbol(pointsymbol);
-	// 	// } else {
-	// 	// 	this._toolbar.setMarkerSymbol(esri.symbol.SimpleMarkerSymbol());
-	// 	// }
-	// 	var symbol;
+		drawBar.setFillSymbol(polygonSymbol);
+		// if(pointsymbol){
+		// 	this._toolbar.setMarkerSymbol(pointsymbol);
+		// } else {
+		// 	this._toolbar.setMarkerSymbol(esri.symbol.SimpleMarkerSymbol());
+		// }
 
-	// 	if(linesymbol){
-	// 		this._toolbar.setLineSymbol(linesymbol);
-	// 		symbol = linesymbol;
-	// 	} else {
-	// 		this._toolbar.setLineSymbol(new esri.symbol.SimpleLineSymbol());
-	// 		symbol = new esri.symbol.SimpleLineSymbol();
-	// 	}
+		drawBar.on("draw-end",function(evt){
+			var graphic = new esri.Graphic(evt.geometry,polygonSymbol);
+			graphic.id = id;
+			graphic.geometry.id = id;
+    		map.graphics.add(graphic);
+    		drawBar.deactivate();
+		});
+	},
 
-	// 	that = this;
-	// 	this._toolbar.on("draw-end",function(evt){
-	// 		var graphic = new esri.Graphic(evt.geometry,symbol);
- //    		that._map.graphics.add(graphic);
-	// 	});
-	// }
+	/**
+	* 地图测距
+	* @arg1 startPoint的coordinate
+	* @arg2 endPoint的coordinate
+	**/
+	measureLength:function(start,end){
+		var startPoint = new esri.geometry.Point(start,this._map.spatialReference);
+		var endPoint = new esri.geometry.Point(end,this._map.spatialReference);
+		// var points = new Array();
+		// points.push(startPoint);
+		// points.push(endPoint);
+		// var polyline = new esri.geometry.Polyline(points);
+		return esri.geometry.getLength(startPoint,endPoint);
+	},
+
+	/**
+	* 开始地图点击交互测距
+	**/
+	startMeasureLengthClick:function(symbol,options){
+		drawBar.activate(esri.toolbars.Draw.POLYLINE,options);
+		var lineSymbol;
+		if(symbol){
+			lineSymbol = symbol;
+		} else {
+			lineSymbol = new esri.symbol.SimpleLineSymbol();
+		}
+
+		if(this._map.getLayer("measureGraphicLayer")==undefined){
+			this.measureGraphicLayer.spatialReference = this._map.spatialReference;
+			this.measureGraphicLayer.visible = true;
+			this._map.addLayer(this.measureGraphicLayer);
+		}
+		var map = this;
+		this.measureGraphicLayer.remove(this.measureGraphic);
+		this.measureGraphicLayer.show();
+		drawBar.on("draw-end",function(evt) {
+			var graphic = new esri.Graphic(evt.geometry,lineSymbol);
+			graphic.id = id;
+			graphic.geometry.id = id;
+    		map.measureGraphicLayer.add(graphic);
+    		map.measureGraphicLayer.redraw();
+    		map.measureGraphic = graphic;
+    		drawBar.deactivate();
+    		var paths = graphic.geometry.paths;
+    		var startPoint = new esri.geometry.Point(map._map.spatialReference);
+    		var endPoint = new esri.geometry.Point(map._map.spatialReference);
+    		var length = 0;
+    		for(var i in paths){
+    			var path = paths[i];
+    			for(var j=0;j<path.length-1;j++){
+    				startPoint.x = path[j][0];
+    				startPoint.y = path[j][1];
+    				endPoint.x = path[j+1][0];
+    				endPoint.y = path[j+1][1];
+    				length += esri.geometry.getLength(startPoint,endPoint);
+    			}
+    		}
+    		console.log(length);
+		});
+	},
+
+	/**
+	* 结束点击交互测距
+	**/
+	stopMeasureLengthClick:function(){
+		this.measureGraphicLayer.clear();
+		this.measureGraphicLayer.redraw();
+		this._map.removeLayer(this.measureGraphicLayer);
+	},
+
+	/**
+	* 开始框选
+	* @arg1 type
+	**/
+	startSelectByExtenx:function(type){
+		switch(type){
+			case "rectangle":
+				drawBar.activate(esri.toolbars.Draw.RECTANGLE);
+				drawBar.on("draw-end",function(evt){
+				});
+				break;
+			case "polygon":
+				drawBar.activate(esri.toolbars.Draw.POLYGON);
+				break;
+			case "circle":
+				drawBar.activate(esri.toolbars.Draw.CIRCLE);
+				break;
+			default:
+				log.error("Not Support This Type");
+				return null;
+		}
+	}
 }
 
 /**

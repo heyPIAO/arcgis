@@ -4,11 +4,18 @@ dojo.require("esri/symbols/SimpleLineSymbol");
 dojo.require("esri/symbols/SimpleFillSymbol");
 
 var map;
+var id;
+var visibility = false;
 
-function init(id){
+function init(idin){
 	//map = new EsriMap(id,{basemap:"topo"});
-	map = new EsriMap(id);
-	var id = map.addLayer("ArcGISTiledMapServiceLayer","http://36.110.27.181:6080/arcgis/rest/services/ChinaMap/MapServer",{hasAttributionData:true});
+	map = new EsriMap(idin);
+	id = map.addLayer("ArcGISTiledMapServiceLayer","http://36.110.27.181:6080/arcgis/rest/services/ChinaMap/MapServer",{hasAttributionData:true});
+	map.setLayerName(id,"datalayer");
+}
+
+function addLayer(){
+	id = map.addLayer("ArcGISTiledMapServiceLayer","http://36.110.27.181:6080/arcgis/rest/services/ChinaMap/MapServer",{hasAttributionData:true});
 	map.setLayerName(id,"datalayer");
 }
 
@@ -172,4 +179,40 @@ function testUpdateSection(){
     new esri.Color([255,0,0]), 2),new esri.Color([255,255,0,0.25])
   ));
 	console.log(result);
+}
+
+function testGetPoint(){
+	console.log(map.getGeometry("testPolygon"));
+	console.log(map.getGeometry("testLine"));
+	console.log(map.getGeometry("testPoint"));
+}
+
+function testDelLayer(){
+	map.deleteLayer(id);
+}
+
+function testSetLayerVisibility(){
+	map.setLayerVisibility(id,visibility);
+	visibility = !visibility;
+}
+
+function testDrawPolygonByClick(){
+	map.startDrawPolygonByClick("clickPolygon");
+}
+
+function testMeasureLength(){
+	coordinates = new Array();
+	coordinates.push([100.00,40.00]);
+	coordinates.push([115.00,50.00]);
+	// coordinates.push([120.00,60.00]);
+	// coordinates.push([100.00,40.00]);
+	console.log(map.measureLength(coordinates[0],coordinates[1]));
+}
+
+function testStartMeasureLengthClick(){
+	map.startMeasureLengthClick();
+}
+
+function testStopMeasureLengthClick(){
+	map.stopMeasureLengthClick();
 }

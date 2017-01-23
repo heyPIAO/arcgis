@@ -6,6 +6,7 @@
 
 
 <link rel="stylesheet" href="http://jsapi.thinkgis.cn/esri/css/esri.css">
+<link rel="stylesheet" href="http://jsapi.thinkgis.cn/dijit/themes/claro/claro.css">
 <script src="./libjs/jquery-3.1.1.min.js"></script>
 <script src="http://jsapi.thinkgis.cn/init.js"></script>
 <script src="./js/api.js"></script>
@@ -16,7 +17,11 @@
   <div id="layout" style="width:100%;height:100%;">
 		<!-- 地图容器 -->
 		<div id="functions">
-			<button onClick=init("basemap")>加载地图</button>
+			<button onClick=init("basemap")>加载地图控件</button>
+			<button onClick=addLayer()>加载地图</button>
+			<button onClick=testDelLayer()>删除图层</button>
+			<button onClick=testSetLayerVisibility()>设置图层可见性</button>
+			<p>
 			<button onClick=testSetScale(3000)>设置比例尺</button>
 			<button onClick=testGetScale()>获取比例尺</button>
 			<!-- <button onClick=testSetCenter(53466292.54490088,3443976.746415986,7)>设置地图中心</button> -->
@@ -27,8 +32,9 @@
 			<button onClick=testSetCursor("url(images/cursors/halo.cur)")>设置光标样式</button>
 			<button onClick=testSetCursor()>光标样式变为默认</button>
 			<button onClick=testGetLayersName()>获取图层名称</button>
+			<button onClick=testMeasureLength()>获取线长度</button>
 			<p>
-			<button onClick=testAddPoint(590438.9599952165,3377665.4707631157,"testPoint")>添加点</button>
+			<button onClick=testAddPoint(120.00,40.00,"testPoint")>添加点</button>
 			<button onClick=testAddMultiPoint()>添加多点</button>
 			<p>
 			<button onClick=testStartAddPoint("test")>开始点击画点</button>
@@ -37,7 +43,7 @@
 			<button onClick=testChangePolylineSymbol()>更改线样式</button>
 			<button onClick=testBackSymbol()>返回点样式</button>
 			<button onClick=testUpdatePoint()>更新点位置</button>
-			<button onClick=testAddPolyline("test",[[],[]])>画线</button>
+			<button onClick=testAddPolyline("testLine",[[],[]])>画线</button>
 			<button onClick=testAddPolylineWithArrow("testArrowLine",[[],[]])>画线(箭头)</button>
 			<button onClick=testSelectGraphic()>开始点击选图形</button>
 			<button onClick=testStopSelectGraphic()>停止点击选图形</button>
@@ -49,6 +55,7 @@
 			<button onClick=testClearSelectedGraphic()>清空所有选中图形</button>
 			<p>
 			<button onClick=testAddPolygon()>添加面</button>
+			<button onClick=testDrawPolygonByClick()>点击画面</button>
 			<button onClick=testUpdatePolygon()>更新面</button>
 			<button onClick=testAddSection()>添加扇形</button>
 			<button onClick=testUpdateSection()>更新扇形</button>
@@ -56,6 +63,9 @@
 			<p>移动节点使用前需先点击选中该图形(点线面均可)<p>
 			<button onClick=startEditMove()>开始移动节点</button>
 			<button onClick=stopEditMove()>结束移动节点</button>
+			<button onClick=testGetPoint()>获取Geometry的所有点</button>
+			<button onClick=testStartMeasureLengthClick()>开始点击测距</button>
+			<button onClick=testStopMeasureLengthClick()>结束点击测距</button>
 
 		</div>
 		<div  id="mapContainer" style="position:absolute;width:100%;height:100%;z-index=-1">
