@@ -202,8 +202,8 @@ function testDrawPolygonByClick(){
 
 function testMeasureLength(){
 	coordinates = new Array();
-	coordinates.push([100.00,40.00]);
-	coordinates.push([115.00,50.00]);
+	coordinates.push([104.88237433840877,52.05226395967745]);
+	coordinates.push([102.8645914054647,49.08269662440126]);
 	// coordinates.push([120.00,60.00]);
 	// coordinates.push([100.00,40.00]);
 	console.log(map.measureLength(coordinates[0],coordinates[1]));
@@ -215,4 +215,8 @@ function testStartMeasureLengthClick(){
 
 function testStopMeasureLengthClick(){
 	map.stopMeasureLengthClick();
+}
+
+function testBDStartMeasureLengthClick(){
+	map.startBDMeasureLengthClick();
 }

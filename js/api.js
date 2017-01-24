@@ -1,6 +1,10 @@
 dojo.require("esri/map");
 dojo.require("esri/Color");
 dojo.require("esri/geometry/mathUtils");
+dojo.require("esri/geometry/geodesicUtils");
+dojo.require("esri/geometry/geometryEngine");
+dojo.require("esri/units");
+dojo.require("esri/symbols/Font");
 
 dojo.require("esri/layers/ArcGISDynamicMapServiceLayer");
 dojo.require("esri/layers/GraphicsLayer");
@@ -18,6 +22,7 @@ dojo.require("esri/geometry/Circle");
 
 dojo.require("esri/SpatialReference");
 dojo.require("esri/symbols/MarkerSymbol");
+dojo.require("esri/symbols/TextSymbol");
 dojo.require("esri/graphic");
 dojo.require("esri/symbols/PictureMarkerSymbol");
 dojo.require("esri/symbols/SimpleMarkerSymbol");
@@ -44,6 +49,10 @@ function EsriMap(id,options) {
  	this.graphicDeleteOnClickHander = new Object();
  	this.mapOnDoubleClickHandler = new Object();
  	this.mapOnEditGraphicHandler = new Object();
+ 	this.mapMeasureLengthOnClickHandler = null;
+ 	this.measureGraphicLayerMouseOverHandler = null;
+ 	this.measureGraphicLayerMouseOutHandler = null;
+ 	this.drawEndHandler = null;
 
  	//初始化toolbar编辑器
  	// this._toolbar = new esri.toolbars.Draw(this._map);
@@ -873,7 +882,7 @@ EsriMap.prototype = {
 		editingEnabled = true;
 		this._map.graphics.on("click",function(evt){
 			evt.preventDefault();
-			if(editingEnabled){
+			if(editingEnabled) {
 				// switch(evt.graphic.geometry.type){
 				// 	case "polyline":
 
@@ -887,7 +896,7 @@ EsriMap.prototype = {
 
 				if(evt.graphic.geometry.type=="polygon" && evt.graphic.geometry.rings[0].length == (3+dif)){
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
-				} else if(evt.graphic.geometry.type=="polyline" && evt.graphic.geometry.rings[0].length == (3+dif)){
+				} else if(evt.graphic.geometry.type=="polyline" && evt.graphic.geometry.paths[0].length == (2+dif)){
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
 				} else {
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
@@ -895,20 +904,38 @@ EsriMap.prototype = {
 
 				//editBar.allowDeletevertices = false;
 				editBar.on("vertex-delete",function(evt){
-					var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
-					if(ring.length == (3+dif) ) {
-						editBar.deactivate();
-						editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
-						console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
+					if(evt.graphic.geometry.type=="polygon"){
+						var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
+						if(ring.length == (3+dif) ) {
+							editBar.deactivate();
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+							console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
+						}
+					} else if(evt.graphic.geometry.type=="polyline"){
+						var path = evt.graphic.geometry.paths[evt.vertexinfo.segmentIndex];
+						if(path.length == (2+dif)){
+							editBar.deactivate();
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+							console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
+						}
 					}
 				});
 
 				editBar.on("vertex-add",function(evt){
-					var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
-					if(ring.length > (3+dif) ) {
-						editBar.deactivate();
-						editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+					if(evt.graphic.geometry.type=="polygon"){
+						var ring = evt.graphic.geometry.rings[evt.vertexinfo.segmentIndex];
+						if(ring.length > (3+dif) ) {
+							editBar.deactivate();
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+						}
+					} else if(evt.graphic.geometry.type=="polyline"){
+						var path = evt.graphic.geometry.paths[evt.vertexinfo.segmentIndex];
+						if(path.length > 2+dif){
+							editBar.deactivate();
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+						}
 					}
+					
 				});
 			} else {
 				editBar.deactivate();
@@ -1027,22 +1054,205 @@ EsriMap.prototype = {
 	* 地图测距
 	* @arg1 startPoint的coordinate
 	* @arg2 endPoint的coordinate
+	* @arg3 unint：计量单位
 	**/
-	measureLength:function(start,end){
+	measureLength:function(start,end,unit){
+		var unitStr;
+		if(unit == "METERS"){
+			unitStr = esri.Units.METERS;
+		} else {
+			unitStr = esri.Units.KILOMETERS;
+		}
 		var startPoint = new esri.geometry.Point(start,this._map.spatialReference);
 		var endPoint = new esri.geometry.Point(end,this._map.spatialReference);
-		// var points = new Array();
-		// points.push(startPoint);
-		// points.push(endPoint);
-		// var polyline = new esri.geometry.Polyline(points);
-		return esri.geometry.getLength(startPoint,endPoint);
+		var points = new Array();
+		points.push(startPoint);
+		points.push(endPoint);
+		var polyline = new esri.geometry.Polyline(this._map.spatialReference);
+		polyline.addPath(points);
+		var polylines = new Array();
+		polylines.push(polyline);
+		var length;
+		if(this._map.spatialReference.isWebMercator()||this._map.spatialReference.wkid == "4326"){
+			length = esri.geometry.geodesicLengths(polylines,unitStr);
+		} else {
+			length = esri.geometry.planarLength(polylines[0],unitStr);
+		}
+		return length[0];
+	},
+
+	/**
+	* 仿百度地图测量距离
+	* @arg1 距离单位
+	**/
+	startBDMeasureLengthClick:function(unit){
+		if(this._map.getLayer("measureGraphicLayer")==undefined){
+			this.measureGraphicLayer.spatialReference = this._map.spatialReference;
+			this.measureGraphicLayer.visible = true;
+			this._map.addLayer(this.measureGraphicLayer);
+		}
+		//this.measureGraphicLayer.clear();
+		this.measureGraphicLayer.show();
+
+		var self = this;
+
+		//初始化测量图层事件
+		if(this.measureGraphicLayerMouseOverHandler){
+			dojo.disconnect(this.measureGraphicLayerMouseOverHandler);
+			this.measureGraphicLayerMouseOverHandler = null;
+		}
+		if(this.measureGraphicLayerMouseOutHandler){
+			dojo.disconnect(this.measureGraphicLayerMouseOutHandler);
+			this.measureGraphicLayerMouseOutHandler = null;
+		}
+
+		if(this.mapMeasureLengthOnClickHandler){
+			dojo.disconnect(this.mapMeasureLengthOnClickHandler);
+			this.mapMeasureLengthOnClickHandler = null;
+		}
+		
+		this.measureGraphicLayerMouseOverHandler = dojo.connect(this.measureGraphicLayer,"onMouseOver",{"self":self},function (evt){
+			var graphic = evt.graphic;
+            if (graphic.symbol.isClearBtn) {
+                self._map.setMapCursor("pointer");
+                graphic.getShape().on("click",function(){
+                	self._map.setMapCursor("default");
+                	self.measureGraphicLayer.remove(graphic);
+                	self.measureGraphicLayer.remove(graphic.connectedGraphic);
+                	for(var i in graphic.stopGraphics){
+                		self.measureGraphicLayer.remove(graphic.stopGraphics[i]);
+                	}
+                	for(var j in graphic.textGraphics){
+                		self.measureGraphicLayer.remove(graphic.textGraphics[j]);
+                	}
+                	self.measureGraphicLayer.redraw();
+                });
+            }
+		});
+
+		this.measureGraphicLayerMouseOutHandler = dojo.connect(this.measureGraphicLayer,"onMouseOut",{"self":self},function (evt){
+			self._map.setMapCursor("default");
+		});
+
+		var stopPoints = new Array();
+		var stopDistances = new Array();
+
+		var stopGraphics = new Array();
+		var textGraphics = new Array();
+
+		var markerSymbol = new esri.symbol.SimpleMarkerSymbol(esri.symbol.SimpleMarkerSymbol.STYLE_CIRCLE,10,
+                new esri.symbol.SimpleLineSymbol( esri.symbol.SimpleLineSymbol.STYLE_SOLID,
+                new esri.Color("#DC143C"), 2),
+                new esri.Color("#FFA500"));
+
+		drawBar.deactivate();
+		drawBar.activate(esri.toolbars.Draw.POLYLINE,{showTooltips: false});
+
+		this.mapMeasureLengthOnClickHandler = dojo.connect(this._map,"onClick",{"self":self},function (evt) {
+			var distance = 0;
+            var stopPoint = evt.mapPoint;
+            if (stopPoints.length > 0) {
+                var startPoint = stopPoints[stopPoints.length - 1];
+                distance = self.measureLength([startPoint.x,startPoint.y],[stopPoint.x,stopPoint.y],unit);
+                 if (stopDistances.length > 0) {
+                    distance += stopDistances[stopDistances.length - 1];
+                 }
+                stopDistances.push(distance);
+            }
+            stopPoints.push(stopPoint);
+            var stopGraphic = new esri.Graphic(stopPoint,markerSymbol);
+            var textGraphic = self.createTextSymbolGraphic(stopPoint,distance);
+            self.measureGraphicLayer.add(stopGraphic);
+            stopGraphics.push(stopGraphic);
+            self.measureGraphicLayer.add(textGraphic);
+            textGraphics.push(textGraphic);
+            self.measureGraphicLayer.redraw();
+		});
+
+		if(this.drawEndHandler!=undefined){
+			dojo.disconnect(this.drawEndHandler);
+			this.drawEndHandler = null;
+		}
+		this.drawEndHandler = dojo.connect(drawBar,"onDrawEnd",{"self":self},function (geometry){
+			var endPoint = stopPoints[stopPoints.length - 1];
+			var lineSymbol = new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color("#FFA500"));
+			lineSymbol.setWidth(2);
+			var lineGraphic = new esri.Graphic(geometry,lineSymbol);
+			var clearGraphic = self.createClearBtn(endPoint,lineGraphic,stopGraphics,textGraphics);
+			clearGraphic.symbol.setOffset(-20, 0);//改变清空图标位置
+			self.measureGraphicLayer.add(clearGraphic);
+            self.measureGraphicLayer.add(lineGraphic);
+            lineGraphic.getDojoShape().moveToBack();
+            self.measureGraphicLayer.redraw();
+            drawBar.deactivate();
+            dojo.disconnect(self.mapMeasureLengthOnClickHandler);
+            self.mapMeasureLengthOnClickHandler = null;
+		});
+
+		// drawBar.on("draw-end",function (evt){
+		// 	var endPoint = stopPoints[stopPoints.length - 1];
+		// 	var lineSymbol = new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color("#FFA500"));
+		// 	lineSymbol.setWidth(1);
+		// 	var lineGraphic = new esri.Graphic(evt.geometry,lineSymbol);
+		// 	var clearGraphic = self.createClearBtn(endPoint,lineGraphic,stopGraphics,textGraphics);
+		// 	clearGraphic.symbol.setOffset(-20, 0);//改变清空图标位置
+		// 	self.measureGraphicLayer.add(clearGraphic);
+  //           self.measureGraphicLayer.add(lineGraphic);
+  //           lineGraphic.getDojoShape().moveToBack();
+  //           self.measureGraphicLayer.redraw();
+  //           drawBar.deactivate();
+  //           dojo.disconnect(self.mapMeasureLengthOnClickHandler);
+  //           //self.mapMeasureLengthOnClickHandler = new Object();
+		// });
+	},
+
+	/**
+	* create text symbol
+	**/
+	createTextSymbolGraphic:function(point,distance){
+		var text = "";
+		if(distance > 0){
+			text = distance.toFixed(2) + "";
+		} else {
+			text = "起点";
+		}
+		var fontColor = new esri.Color("#696969");
+        var holoColor = new esri.Color("#fff");
+        var font = new esri.symbol.Font("10pt", esri.symbol.Font.STYLE_ITALIC, esri.symbol.Font.VARIANT_NORMAL, esri.symbol.Font.WEIGHT_BOLD, "Courier");
+        var textSymbol = new esri.symbol.TextSymbol(text,font,fontColor);
+        textSymbol.setOffset(10, 10).setHaloColor(holoColor).setHaloSize(2);
+        textSymbol.setAlign(esri.symbol.TextSymbol.ALIGN_MIDDLE);
+
+        return new esri.Graphic(point,textSymbol);
+	},
+
+	createClearBtn:function(point,connectedGraphic,stopGraphics,textGraphics){
+		var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z"
+        var iconColor = "#b81b1b";
+        var clearSymbol = new esri.symbol.SimpleMarkerSymbol();
+        clearSymbol.setOffset(-40, 15);
+        clearSymbol.setPath(iconPath);
+        clearSymbol.setColor(new esri.Color(iconColor));
+        clearSymbol.setOutline(null);
+        clearSymbol.isClearBtn = true;
+        var graphic = esri.Graphic(point, clearSymbol);
+        graphic.connectedGraphic = connectedGraphic;
+        graphic.stopGraphics = stopGraphics;
+        graphic.textGraphics = textGraphics;
+        return graphic;
 	},
 
 	/**
 	* 开始地图点击交互测距
 	**/
-	startMeasureLengthClick:function(symbol,options){
-		drawBar.activate(esri.toolbars.Draw.POLYLINE,options);
+	startMeasureLengthClick:function(symbol,unit){
+		drawBar.activate(esri.toolbars.Draw.POLYLINE,{showTooltips: false});
+		var unitStr;
+		if(unit == "METERS"){
+			unitStr = esri.Units.METERS;
+		} else {
+			unitStr = esri.Units.KILOMETERS;
+		}
 		var lineSymbol;
 		if(symbol){
 			lineSymbol = symbol;
@@ -1056,31 +1266,65 @@ EsriMap.prototype = {
 			this._map.addLayer(this.measureGraphicLayer);
 		}
 		var map = this;
-		this.measureGraphicLayer.remove(this.measureGraphic);
+		//this.measureGraphicLayer.clear();
 		this.measureGraphicLayer.show();
 		drawBar.on("draw-end",function(evt) {
-			var graphic = new esri.Graphic(evt.geometry,lineSymbol);
-			graphic.id = id;
-			graphic.geometry.id = id;
-    		map.measureGraphicLayer.add(graphic);
-    		map.measureGraphicLayer.redraw();
-    		map.measureGraphic = graphic;
-    		drawBar.deactivate();
-    		var paths = graphic.geometry.paths;
-    		var startPoint = new esri.geometry.Point(map._map.spatialReference);
-    		var endPoint = new esri.geometry.Point(map._map.spatialReference);
-    		var length = 0;
-    		for(var i in paths){
-    			var path = paths[i];
-    			for(var j=0;j<path.length-1;j++){
-    				startPoint.x = path[j][0];
-    				startPoint.y = path[j][1];
-    				endPoint.x = path[j+1][0];
-    				endPoint.y = path[j+1][1];
-    				length += esri.geometry.getLength(startPoint,endPoint);
+			if(map._map.spatialReference.isWebMercator()||map._map.spatialReference.wkid=="4326"){
+				var graphic = new esri.Graphic(evt.geometry,lineSymbol);
+				graphic.id = id;
+				graphic.geometry.id = id;
+    			map.measureGraphicLayer.add(graphic);
+    			map.measureGraphicLayer.redraw();
+    			map.measureGraphic = graphic;
+    			drawBar.deactivate();
+    			var paths = graphic.geometry.paths;
+    			var startPoint = new esri.geometry.Point(map._map.spatialReference);
+    			var endPoint = new esri.geometry.Point(map._map.spatialReference);
+    			var polylines = new Array();
+    			for(var i in paths){
+    				var path = paths[i];
+    				for(var j=0;j<path.length-1;j++) {
+    					startPoint.x = path[j][0];
+    					startPoint.y = path[j][1];
+    					endPoint.x = path[j+1][0];
+    					endPoint.y = path[j+1][1];
+    					var polyline = new esri.geometry.Polyline(map._map.spatialReference);
+    					var points = new Array();
+    					points.push(startPoint);
+    					points.push(endPoint);
+    					polyline.addPath(points);
+    					polylines.push(polyline);
+    					//length += esri.geometry.getLength(startPoint,endPoint);
+    				}
     			}
-    		}
-    		console.log(length);
+    			polylines.push(evt.geometry);
+    			var length = esri.geometry.geodesicLengths(polylines,unitStr);
+    			console.log(length);
+    			return;
+			} else {
+				var length = new Array();
+				var paths = graphic.geometry.paths;
+				var startPoint = new esri.geometry.Point(map._map.spatialReference);
+    			var endPoint = new esri.geometry.Point(map._map.spatialReference);
+				for(var i in paths){
+					var path = paths[i];
+					for(var j=0;j<path.length-1;j++){
+						startPoint.x = path[j][0];
+    					startPoint.y = path[j][1];
+    					endPoint.x = path[j+1][0];
+    					endPoint.y = path[j+1][1];
+    					var polyline = new esri.geometry.Polyline(map._map.spatialReference);
+    					var points = new Array();
+    					points.push(startPoint);
+    					points.push(endPoint);
+    					polyline.addPath(points);
+    					length.push(esri.geometry.planarLength(polyline,unitStr));
+					}
+				}
+				length.push(esri.geometry.planarLength(evt.geometry,unitStr));
+				console.log(length);
+				return;
+			}
 		});
 	},
 
@@ -1088,9 +1332,20 @@ EsriMap.prototype = {
 	* 结束点击交互测距
 	**/
 	stopMeasureLengthClick:function(){
+		if(this.drawEndHandler!=undefined){
+			dojo.disconnect(this.drawEndHandler);
+		}
+		dojo.disconnect(this.measureGraphicLayerMouseOverHandler);
+		dojo.disconnect(this.measureGraphicLayerMouseOutHandler);
+		dojo.disconnect(this.mapMeasureLengthOnClickHandler);
+		this.measureGraphicLayerMouseOutHandler = null;
+		this.measureGraphicLayerMouseOverHandler = null;
+		this.drawEndHandler = null;
+		this.mapMeasureLengthOnClickHandler = null;
 		this.measureGraphicLayer.clear();
 		this.measureGraphicLayer.redraw();
 		this._map.removeLayer(this.measureGraphicLayer);
+		drawBar.deactivate();
 	},
 
 	/**
