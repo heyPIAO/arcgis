@@ -429,7 +429,7 @@ EsriMap.prototype = {
 			this.param.esrimap.selectedGraphicLayer.visible = true;
 			this.param.map.addLayer(this.param.esrimap.selectedGraphicLayer);
 		}
-		this.param.esrimap.selectedGraphicLayer.remove(this.param.esrimap.selectedGraphic);
+		this.param.esrimap.selectedGraphicLayer.clear();
 		switch(evt.graphic.geometry.type){
 			case "point":
 				//同样的位子再打一个点标示选中
@@ -463,7 +463,7 @@ EsriMap.prototype = {
 	stopSelectGraphic:function(){
 		//this.selectedGraphicLayer.hide();
 		//this._map.graphics.hide();
-		this.selectedGraphicLayer.remove(this.selectedGraphic);
+		this.selectedGraphicLayer.clear();
 		this.selectedGraphicLayer.redraw();
 		this._map.removeLayer(this.selectedGraphicLayer);
 		//this.selectedGraphic =  new esri.Graphic();
@@ -477,7 +477,7 @@ EsriMap.prototype = {
 			this.selectedGraphicLayer.visible = true;
 			this._map.addLayer(this.selectedGraphicLayer);
 		}
-		this.selectedGraphicLayer.remove(this.selectedGraphic);
+		this.selectedGraphicLayer.clear();
 		var loop = this._map.graphics.graphics.length;
 		
 		for (var i=0;i<loop;i++){
@@ -1019,7 +1019,7 @@ EsriMap.prototype = {
 	},
 
 	/**
-	* 开始在地图上画线
+	* 开始在地图上画面
 	* @arg1 画面的Symbol
 	* @arg2 画面参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
 	**/
@@ -1041,13 +1041,25 @@ EsriMap.prototype = {
 		// 	this._toolbar.setMarkerSymbol(esri.symbol.SimpleMarkerSymbol());
 		// }
 
-		drawBar.on("draw-end",function(evt){
+		if(this.drawEndHandler!=null){
+			dojo.disconnect(this.drawEndHandler);
+			this.drawEndHandler = null;
+		}
+
+		this.drawEndHandler = dojo.connect(drawBar,"onDrawEnd",{"map":map},function (evt){
 			var graphic = new esri.Graphic(evt.geometry,polygonSymbol);
 			graphic.id = id;
 			graphic.geometry.id = id;
     		map.graphics.add(graphic);
     		drawBar.deactivate();
 		});
+		// drawBar.on("draw-end",function(evt){
+		// 	var graphic = new esri.Graphic(evt.geometry,polygonSymbol);
+		// 	graphic.id = id;
+		// 	graphic.geometry.id = id;
+  //   		map.graphics.add(graphic);
+  //   		drawBar.deactivate();
+		// });
 	},
 
 	/**
@@ -1188,22 +1200,6 @@ EsriMap.prototype = {
             dojo.disconnect(self.mapMeasureLengthOnClickHandler);
             self.mapMeasureLengthOnClickHandler = null;
 		});
-
-		// drawBar.on("draw-end",function (evt){
-		// 	var endPoint = stopPoints[stopPoints.length - 1];
-		// 	var lineSymbol = new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color("#FFA500"));
-		// 	lineSymbol.setWidth(1);
-		// 	var lineGraphic = new esri.Graphic(evt.geometry,lineSymbol);
-		// 	var clearGraphic = self.createClearBtn(endPoint,lineGraphic,stopGraphics,textGraphics);
-		// 	clearGraphic.symbol.setOffset(-20, 0);//改变清空图标位置
-		// 	self.measureGraphicLayer.add(clearGraphic);
-  //           self.measureGraphicLayer.add(lineGraphic);
-  //           lineGraphic.getDojoShape().moveToBack();
-  //           self.measureGraphicLayer.redraw();
-  //           drawBar.deactivate();
-  //           dojo.disconnect(self.mapMeasureLengthOnClickHandler);
-  //           //self.mapMeasureLengthOnClickHandler = new Object();
-		// });
 	},
 
 	/**
@@ -1353,11 +1349,33 @@ EsriMap.prototype = {
 	* @arg1 type
 	**/
 	startSelectByExtenx:function(type){
-		switch(type){
+
+		if(this._map.getLayer("selectedGraphicLayer")==undefined){
+			this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
+			this.selectedGraphicLayer.visible = true;
+			this._map.addLayer(this.selectedGraphicLayer);
+		}
+
+		this.selectedGraphicLayer.clear();
+
+		if(this.drawEndHandler){
+			dojo.disconnect(this.drawEndHandler);
+			this.drawEndHandler = null;
+		}
+
+		var self = this;
+
+		var selectType;
+
+		if(type){
+			selectType = type;
+		} else {
+			selectType = "rectangle";
+		}
+
+		switch(selectType){
 			case "rectangle":
 				drawBar.activate(esri.toolbars.Draw.RECTANGLE);
-				drawBar.on("draw-end",function(evt){
-				});
 				break;
 			case "polygon":
 				drawBar.activate(esri.toolbars.Draw.POLYGON);
@@ -1366,9 +1384,58 @@ EsriMap.prototype = {
 				drawBar.activate(esri.toolbars.Draw.CIRCLE);
 				break;
 			default:
-				log.error("Not Support This Type");
+				console.error("Not Support This Type");
 				return null;
 		}
+
+		require(["esri/geometry/geometryEngine"],function(geometryEngine){
+			this.drawEndHandler = dojo.connect(drawBar,"onDrawEnd",{"self":self},function (evt){
+					drawBar.deactivate();
+					var geometry = evt;
+					loop = self._map.graphics.graphics.length;
+					for(var i=0;i<loop;i++){
+						if(self._map.graphics.graphics[i].geometry){
+							var geo = self._map.graphics.graphics[i].geometry;
+							if(geo.type=="polygon" && (!geometryEngine.disjoint(geometry,geo))){
+									var selected = new esri.Graphic();
+									selected.geometry = geo;
+									selected.id = geo.id;
+									selected.symbol = self.selectedPolygonSymbol
+									self.selectedGraphicLayer.add(selected);
+							} else if(geo.type=="polyline"){
+								if(geometryEngine.contains(geometry,geo)||(!geometryEngine.disjoint(geometry,geo))){
+									var selected = new esri.Graphic();
+									selected.geometry = geo;
+									selected.id = geo.id;
+									selected.symbol = self.selectedPolylineSymbol;
+									self.selectedGraphicLayer.add(selected);
+								}
+							} else if(geo.type=="point"){
+								if(geometryEngine.contains(geometry,geo)){
+									var selected = new esri.Graphic();
+									selected.geometry = geo;
+									selected.id = geo.id;
+									selected.symbol = self.selectedPointSymbol;
+									self.selectedGraphicLayer.add(selected);
+									//this.selectedGraphicLayer.redraw();
+								}
+							}
+						}
+					}
+					self.selectedGraphicLayer.redraw();
+				});
+		});
+	},
+
+	/**
+	* 结束框选
+	**/
+	stopSelectByExtenx:function(){
+		this.selectedGraphicLayer.clear();
+		this._map.removeLayer(this.selectedGraphicLayer);
+		drawBar.deactivate();
+		dojo.disconnect(this.drawEndHandler);
+		this.drawEndHandler = null;
 	}
 }
 

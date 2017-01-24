@@ -220,3 +220,11 @@ function testStopMeasureLengthClick(){
 function testBDStartMeasureLengthClick(){
 	map.startBDMeasureLengthClick();
 }
+
+function testStartSelectByExtenx(){
+	map.startSelectByExtenx();
+}
+
+function testStopSelectByExtenx(){
+	map.stopSelectByExtenx();
+}
