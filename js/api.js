@@ -533,10 +533,13 @@ EsriMap.prototype = {
 		switch(evt.graphic.geometry.type){
 			case "point":
 				this.param.map.graphics.remove(evt.graphic);
+				if(evt.graphic.isArrow){
+					this.param.map.graphics.remove(evt.graphic.connectedGraphic);
+				}
 				break;
 			case "polyline":
 				if(evt.graphic._isArrow){
-					this.param.map.graphics.remove(evt.graphic._arrowGraphic);
+					this.param.map.graphics.remove(evt.graphic.connectedGraphic);
 				}
 				this.param.map.graphics.remove(evt.graphic);
 				break;
@@ -556,6 +559,9 @@ EsriMap.prototype = {
 		for (var i=0;i<loop;i++){
 			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
 				this._map.graphics.remove(this._map.graphics.graphics[i]);
+				if(this._map.graphics.graphics[i]._isArrow){
+					this._map.graphics.remove(this._map.graphics.graphics[i].connectedGraphic);
+				}
 				return true;
 				break;
 			}
@@ -583,6 +589,9 @@ EsriMap.prototype = {
 				loop = this._map.graphics.graphics.length;
 				for (var i=0;i<loop;i++){
 					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point"){
+						if(this._map.graphics.graphics[i].isArrow){
+							continue;
+						}
 						this._map.graphics.remove((this._map.graphics.graphics[i]));
 						loop--;
 						i--;
@@ -594,6 +603,9 @@ EsriMap.prototype = {
 				for (var i=0;i<loop;i++){
 					if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline"){
 						this._map.graphics.remove((this._map.graphics.graphics[i]));
+						if(this._map.graphics.graphics[i]._isArrow){
+							this._map.graphics.remove(this._map.graphics.graphics[i].connectedGraphic);
+						}
 						loop--;
 						i--;
 					}
@@ -623,7 +635,7 @@ EsriMap.prototype = {
 	* @arg6 arrowPosition: 箭头的位置 1起始处添加,2中间添加,3结尾处添加
 	* @arg7 spatialreference
 	**/
-	addPolyline:function(id,coordinates,symbol,isArrow,arrowSize,arrowPosition,spatialreference){
+	addPolyline:function(id,coordinates,symbol,isArrow,arrowSize,arrowColor,arrowAngle,arrowPosition,spatialreference){
 		var line = new Polyline(id,coordinates,symbol,spatialreference);
 		if(spatialreference){
 			line.setSpatialReference(this._map.spatialReference);
@@ -659,81 +671,11 @@ EsriMap.prototype = {
 			}
 
 			//画箭头
-			//首先将起点、终点和arrowPoint点都转换为屏幕坐标
-			var screenStart = this._map.toScreen(line._line.getPoint(0,0));
-			var screenEnd = this._map.toScreen(line._line.getPoint(0,1));
-			var screenArrow = this._map.toScreen(arrowPoint);
-			var angle = Math.PI/5; //暂定箭头角度为36度
-
-			var end1 = new esri.geometry.ScreenPoint(0,0);
-			var end2 = new esri.geometry.ScreenPoint(0,0);
-
-			//临时点
-			var screenTemp = new esri.geometry.ScreenPoint(0,0);
-			
-			//斜率不存在时
-			if(screenEnd.x == screenStart.x){
-				screenTemp.setX(screenEnd.x);
-				if(screenEnd.y>screenStart.y) {  
-    				screenTemp.setY(screenEnd.y - arrowSize); 
-    			} else {  
-    				screenTemp.setY(screenEnd.y + arrowSize);   
-    			}
-				end1.setX(pixelTemX - arrowSize*Math.tan(angle));
-				end1.setY(screenTemp.y);
-				end2.setX(pixelTemX + arrowSize*Math.tan(angle));
-				end2.setY(screenTemp.y);
-			} else {
-				//斜率存在时
-				var delta = (screenEnd.y - screenStart.y)/(screenEnd.x - screenStart.x);
-				var param = Math.sqrt(delta*delta + 1);
-				if(screenEnd.x < screenStart.x){
-					//第2、3象限
-					screenTemp.setX(screenEnd.x + arrowSize/param);
-					screenTemp.setY(screenEnd.y + delta*arrowSize/param);
-				} else {
-					//第1、4象限
-					screenTemp.setX(screenEnd.x - arrowSize/param);
-					screenTemp.setY(screenEnd.y - delta*arrowSize/param);
-				}
-				//已知直角三角形两个点坐标及其中一个角，求另外一个点坐标算法
-    			end1.setX(screenTemp.x + Math.tan(angle)*arrowSize*delta/param);
-    			end1.setY(screenTemp.y - Math.tan(angle)*arrowSize/param);
-
-    			end2.setX(screenTemp.x - Math.tan(angle)*arrowSize*delta/param);
-    			end2.setY(screenTemp.y + Math.tan(angle)*arrowSize/param);
-			}
-
-			//将箭头平移
-			var deltaX = screenEnd.x - screenArrow.x;
-			var deltaY = screenEnd.y - screenArrow.y;
-			end1.setX(end1.x - deltaX);
-			end1.setY(end1.y - deltaY);
-			end2.setX(end2.x - deltaX);
-			end2.setY(end2.y - deltaY);
-
-
-			//将end1和end2转为地图坐标
-			var geoend1 = this._map.toMap(end1);
-			var geoend2 = this._map.toMap(end2);
-
-			//绘Arrow的Polyline
-			var arrowLine = new esri.geometry.Polyline(this._map.spatialReference);
-			var arrowPoints = new Array();
-			arrowPoints.push(geoend1);
-			arrowPoints.push(arrowPoint);
-			arrowPoints.push(geoend2);
-			arrowLine.addPath(arrowPoints);
-
-			arrowLine.id = line._id + "_arrow";
-			//绘Arrow的Graphic
-			var arrowGraphic =  new esri.Graphic(arrowLine,line._symbol);
-			arrowGraphic.id = arrowLine.id;
-			line._arrowGraphic = arrowGraphic;
-			graphic._arrowGraphic = arrowGraphic;
-			this._map.graphics.add(arrowGraphic);
+			var arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,arrowColor,arrowAngle);
+			graphic.connectedGraphic = arrowGraphic;
 		}
 		this._map.graphics.add(graphic);
+		this._map.graphics.add(arrowGraphic);
 		return line;
 	},
 
@@ -1223,7 +1165,7 @@ EsriMap.prototype = {
 	},
 
 	createClearBtn:function(point,connectedGraphic,stopGraphics,textGraphics){
-		var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z"
+		var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z";
         var iconColor = "#b81b1b";
         var clearSymbol = new esri.symbol.SimpleMarkerSymbol();
         clearSymbol.setOffset(-40, 15);
@@ -1235,6 +1177,28 @@ EsriMap.prototype = {
         graphic.connectedGraphic = connectedGraphic;
         graphic.stopGraphics = stopGraphics;
         graphic.textGraphics = textGraphics;
+        return graphic;
+	},
+
+	createArrowGraphic:function(point,connectedGraphic,arrowColor,arrowAngle){
+		//var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z";
+        var iconPath = "M2,2 L2,11 L10,6 L2,2";
+        var iconColor = "#b81b1b";
+        if(arrowColor){
+        	iconColor = arrowColor;
+        }
+        var symbol = new esri.symbol.SimpleMarkerSymbol();
+        symbol.setOffset(3,-1);
+        symbol.setOutline(null);
+        symbol.setPath(iconPath);
+        symbol.setColor(new esri.Color(iconColor));
+        if(arrowAngle){
+        	symbol.setAngle(arrowAngle);
+        }
+        symbol.isArrow = true;
+        var graphic = esri.Graphic(point,symbol);
+        graphic.isArrow = true;
+        graphic.connectedGraphic = connectedGraphic;
         return graphic;
 	},
 

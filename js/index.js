@@ -88,9 +88,9 @@ function testAddPolyline(id,coordinates,symbol,spatialreference){
 
 function testAddPolylineWithArrow(id,coordinates,symbol,spatialreference){
 	coordinates = new Array();
-	coordinates.push([590036.5823106212,3378004.926107082]);
-	coordinates.push([591010.1723839608,3379232.055262021]);
-	map.addPolyline(id,coordinates,symbol,true,10,2,spatialreference);
+	coordinates.push([120.00,40.00]);
+	coordinates.push([115.00,50.00]);
+	map.addPolyline(id,coordinates,symbol,true,10,null,null,2,spatialreference);
 }
 
 function testStartDeleteGraphic(){
