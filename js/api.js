@@ -965,8 +965,9 @@ EsriMap.prototype = {
 
 	/**
 	* 开始在地图上画面
-	* @arg1 画面的Symbol
-	* @arg2 画面参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
+	* @arg1 id
+	* @arg2 画面的Symbol
+	* @arg3 画面参数，activate的options参数: optional 具体参见https://developers.arcgis.com/javascript/3/jsapi/draw-amd.html
 	**/
 	startDrawPolygonByClick:function(id,symbol,options){
 
@@ -991,9 +992,11 @@ EsriMap.prototype = {
 			this.drawEndHandler = null;
 		}
 
-		this.drawEndHandler = dojo.connect(drawBar,"onDrawEnd",{"map":map},function (evt){
-			var graphic = new esri.Graphic(evt.geometry,polygonSymbol);
+		this.drawEndHandler = dojo.connect(drawBar,"onDrawEnd",{"map":map,"id":id},function (evt){
+			var polygon = new esri.geometry.Polygon(evt.rings);
+			var graphic = new esri.Graphic(polygon,polygonSymbol);
 			graphic.id = id;
+			// graphic.geometry = new esri.geometry.Polygon(graphic.rings);
 			graphic.geometry.id = id;
     		map.graphics.add(graphic);
     		drawBar.deactivate();
