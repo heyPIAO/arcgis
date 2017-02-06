@@ -228,3 +228,11 @@ function testStartSelectByExtenx(){
 function testStopSelectByExtenx(){
 	map.stopSelectByExtenx();
 }
+
+function testDoFindTask(){
+	map.doFindTask("http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/TaxParcel/TaxParcelQuery/MapServer/",showResult,[0],["OWNERNME1", "OWNERNME2"],"Katz",false);
+}
+
+function showResult(result){
+	console.log(result);
+}

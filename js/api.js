@@ -31,7 +31,10 @@ dojo.require("esri/symbols/SimpleLineSymbol");
 
 dojo.require("esri/toolbars/draw");
 dojo.require("esri/toolbars/edit");
-dojo.require("dojo/_base/event");
+
+dojo.require("esri/tasks/FindParameters");
+dojo.require("esri/tasks/FindTask");
+//dojo.require("dojo/_base/event");
 
 var editingEnabled = false;
 var editBar;
@@ -1400,6 +1403,35 @@ EsriMap.prototype = {
 		drawBar.deactivate();
 		dojo.disconnect(this.drawEndHandler);
 		this.drawEndHandler = null;
+	},
+
+	/**
+	* FindTask
+	* @arg1: url String,目标地图服务的url
+	* @arg2: showResultFunc Function,获取请求结果的Function,Function形如Function(results),详见http://jshelp.thinkgis.cn/jssamples/find_map_datagrid.html
+	* @arg3: layerIds Number[],指定搜索图层的id
+	* @arg4: fields String[],指定的搜索字段
+	* @arg5: searchText
+	* @arg6: returnGeometry boolean,是否返回Geometry，默认为false
+	**/
+	doFindTask:function(url,showResultFunc,layerIds,fields,searchText,returnGeometry){
+		var isReturn = false;
+		if(returnGeometry){
+			isReturn = true;
+		}
+		var findParamter = new esri.tasks.FindParameters();
+		findParamter.returnGeometry = isReturn;
+		if(layerIds){
+			findParamter.layerIds = layerIds;
+		}
+		if(fields){
+			findParamter.searchFields = fields;
+		}
+		findParamter.searchText = searchText;
+		findParamter.outSpatialReference = this._map.spatialReference;
+
+		var findTask = new esri.tasks.FindTask(url);
+		findTask.execute(findParamter,showResultFunc);
 	}
 }
 
