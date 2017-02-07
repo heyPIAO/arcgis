@@ -10,6 +10,7 @@ var visibility = false;
 function init(idin){
 	//map = new EsriMap(id,{basemap:"topo"});
 	map = new EsriMap(idin);
+	//id = map.addLayer("ArcGISDynamicMapServiceLayer","http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/TaxParcel/TaxParcelQuery/MapServer/");
 	id = map.addLayer("ArcGISTiledMapServiceLayer","http://36.110.27.181:6080/arcgis/rest/services/ChinaMap/MapServer",{hasAttributionData:true});
 	map.setLayerName(id,"datalayer");
 }
@@ -88,9 +89,9 @@ function testAddPolyline(id,coordinates,symbol,spatialreference){
 
 function testAddPolylineWithArrow(id,coordinates,symbol,spatialreference){
 	coordinates = new Array();
-	coordinates.push([120.00,40.00]);
 	coordinates.push([115.00,50.00]);
-	map.addPolyline(id,coordinates,symbol,true,10,null,null,2,spatialreference);
+	coordinates.push([120.00,40.00]);
+	map.addPolyline(id,coordinates,symbol,true,null,2,spatialreference);
 }
 
 function testStartDeleteGraphic(){
@@ -230,7 +231,7 @@ function testStopSelectByExtenx(){
 }
 
 function testDoFindTask(){
-	map.doFindTask("http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/TaxParcel/TaxParcelQuery/MapServer/",showResult,[0],["OWNERNME1", "OWNERNME2"],"Katz",false);
+	map.doFindTask("http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/TaxParcel/TaxParcelQuery/MapServer/",showResult,[0],["OWNERNME1", "OWNERNME2"],"Katz",true);
 }
 
 function showResult(result){

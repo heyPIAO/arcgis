@@ -12,6 +12,10 @@
 	color:black;
 }
 
+.map .tooltip {
+    background-color: #e5f2fe; !important
+}
+
 
 /*.dijitReset {
     position:absolute;

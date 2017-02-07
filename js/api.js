@@ -37,8 +37,10 @@ dojo.require("esri/tasks/FindTask");
 //dojo.require("dojo/_base/event");
 
 var editingEnabled = false;
+var isAllowedDeleteVertex = true;
 var editBar;
 var drawBar;
+var editBarVertextHandler;
 /*
 * 新封装一个map类
 * @arg1 id 容纳地图容器的div的id
@@ -46,7 +48,6 @@ var drawBar;
 */
 function EsriMap(id,options) {
  	this._map = new esri.Map(id,options);
-
  	this.mapOnClickHandler = new Object();
  	this.graphicSelecteOnClickHandler = new Object();
  	this.graphicDeleteOnClickHander = new Object();
@@ -474,6 +475,38 @@ EsriMap.prototype = {
 		this.graphicSelecteOnClickHandler = new Object();
 	},
 
+	selectGraphicByGeometry:function(geometry){
+		if(this._map.getLayer("selectedGraphicLayer")==undefined){
+			this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
+			this.selectedGraphicLayer.visible = true;
+			this._map.addLayer(this.selectedGraphicLayer);
+		}
+		this.selectedGraphicLayer.clear();
+		switch(geometry.type){
+			case "point": 
+				this.selectedGraphic.geometry = geometry;
+				this.selectedGraphic.id = "selectedGraphic";
+				this.selectedGraphic.symbol = this.selectedPointSymbol;
+				this.selectedGraphicLayer.add(this.selectedGraphic);
+				this.selectedGraphicLayer.redraw();
+				break;
+			case "polyline": 
+				this.selectedGraphic.geometry = geometry;
+				this.selectedGraphic.id = "selectedGraphic";
+				this.selectedGraphic.symbol = this.selectedPolylineSymbol;
+				this.selectedGraphicLayer.add(this.selectedGraphic);
+				this.selectedGraphicLayer.redraw();
+				break;
+			case "polygon": 
+				this.selectedGraphic.geometry = geometry;
+				this.selectedGraphic.id = "selectedGraphic";
+				this.selectedGraphic.symbol = this.selectedPolygonSymbol;
+				this.selectedGraphicLayer.add(this.selectedGraphic);
+				this.selectedGraphicLayer.redraw();
+				break;
+		};
+	},
+
 	selectGraphicById:function(id){
 		if(this._map.getLayer("selectedGraphicLayer")==undefined){
 			this.selectedGraphicLayer.spatialReference = this._map.spatialReference;
@@ -638,7 +671,7 @@ EsriMap.prototype = {
 	* @arg6 arrowPosition: 箭头的位置 1起始处添加,2中间添加,3结尾处添加
 	* @arg7 spatialreference
 	**/
-	addPolyline:function(id,coordinates,symbol,isArrow,arrowSize,arrowColor,arrowAngle,arrowPosition,spatialreference){
+	addPolyline:function(id,coordinates,symbol,isArrow,arrowColor,arrowPosition,spatialreference){
 		var line = new Polyline(id,coordinates,symbol,spatialreference);
 		if(spatialreference){
 			line.setSpatialReference(this._map.spatialReference);
@@ -647,8 +680,8 @@ EsriMap.prototype = {
 		graphic.id = line._id;
 		if(isArrow){
 			line._isArrow = isArrow;
-			line._arrowSize = arrowSize;
 			line._arrowPosition = arrowPosition;
+			line._line._arrowPosition = arrowPosition;
 			graphic._isArrow = isArrow;
 			graphic._arrowSize = line._arrowSize;
 			graphic._arrowPosition = line._arrowPosition;
@@ -673,8 +706,13 @@ EsriMap.prototype = {
 					break;
 			}
 
+			var arrowGraphic;
 			//画箭头
-			var arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,arrowColor,arrowAngle);
+			if(arrowColor){
+				arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,arrowColor);
+			} else {
+				arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,graphic.symbol.color);
+			}
 			graphic.connectedGraphic = arrowGraphic;
 		}
 		this._map.graphics.add(graphic);
@@ -825,7 +863,7 @@ EsriMap.prototype = {
 	*/
 	startEditMoveGraphic:function(){
 		editingEnabled = true;
-		this._map.graphics.on("click",function(evt){
+		this._map.graphics.on("click",function(evt) {
 			evt.preventDefault();
 			if(editingEnabled) {
 				// switch(evt.graphic.geometry.type){
@@ -841,10 +879,14 @@ EsriMap.prototype = {
 
 				if(evt.graphic.geometry.type=="polygon" && evt.graphic.geometry.rings[0].length == (3+dif)){
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
-				} else if(evt.graphic.geometry.type=="polyline" && evt.graphic.geometry.paths[0].length == (2+dif)){
-					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+					isAllowedDeleteVertex = false;
+				} else if(evt.graphic.geometry.type=="polyline"){
+					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false,allowAddVertices:false});
+					//editBar.activate(esri.toolbars.Edit.MOVE,evt.graphic);
+					isAllowedDeleteVertex = false;
 				} else {
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+					isAllowedDeleteVertex = true;
 				}
 
 				//editBar.allowDeletevertices = false;
@@ -854,13 +896,15 @@ EsriMap.prototype = {
 						if(ring.length == (3+dif) ) {
 							editBar.deactivate();
 							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+							isAllowedDeleteVertex = false;
 							console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
 						}
 					} else if(evt.graphic.geometry.type=="polyline"){
 						var path = evt.graphic.geometry.paths[evt.vertexinfo.segmentIndex];
 						if(path.length == (2+dif)){
 							editBar.deactivate();
-							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false});
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false,allowAddVertices:false});
+							isAllowedDeleteVertex = false;
 							console.error("无法继续删除Vertext，Vertext少于构成Geometry必须的数量");
 						}
 					}
@@ -872,16 +916,81 @@ EsriMap.prototype = {
 						if(ring.length > (3+dif) ) {
 							editBar.deactivate();
 							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+							isAllowedDeleteVertex = true;
 						}
 					} else if(evt.graphic.geometry.type=="polyline"){
 						var path = evt.graphic.geometry.paths[evt.vertexinfo.segmentIndex];
 						if(path.length > 2+dif){
 							editBar.deactivate();
-							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
+							editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true,allowAddVertices:false});
+							isAllowedDeleteVertex = true;
 						}
 					}
 					
 				});
+
+				editBar.on("graphic-move-start",function(evt){
+					if(evt.graphic.geometry.type=="point" && evt.graphic.isArrow){
+						//TODO
+						//防止点击在箭头上
+						//editBar.deactivate();
+						editBar.refresh();
+						//editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:isAllowedDeleteVertex});
+					}
+				});
+
+				editBar.on("vertex-move-stop",function(evt) {
+					var map = evt.target._map;
+					if(evt.graphic.geometry.type=="polyline" && evt.graphic._isArrow) {
+						//TODO 对于含箭头的polyline，在vertext移动以后，箭头也要跟着动
+						map.graphics.remove(evt.graphic.connectedGraphic);
+						var line = evt.graphic.geometry;
+						var arrowPosition = evt.graphic._arrowPosition;
+						var arrowPoint;
+						switch(arrowPosition){
+							case 1:
+								arrowPoint = line.getPoint(0,0); //获得线的第一个点
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+							case 2:
+								var start = line.getPoint(0,0);
+								var end = line.getPoint(0,1); 
+								var lon = (start.x + end.x)/2;
+								var lat = (start.y + end.y)/2;
+								arrowPoint = new esri.geometry.Point(lon,lat);
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+							case 3:
+								arrowPoint = line.getPoint(0,1); //获得线的最后一个点
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+						}
+
+						var arrow = evt.graphic.connectedGraphic.geometry;
+						arrow.update(arrowPoint.x,arrowPoint.y);
+						var arrowsymbol = evt.graphic.connectedGraphic.symbol;
+
+						var startPoint = line.getPoint(0,0);
+        				var endPoint = line.getPoint(0,1);
+
+        				var deltx = (endPoint.x - startPoint.x)/(endPoint.y - startPoint.y);
+
+        				var angle = (Math.atan(deltx)/Math.PI) * 180;
+
+        				if(deltx < 0){
+        					angle = angle + 180;
+        				}
+
+        				arrowsymbol.setAngle(angle);
+        				var arrowGraphic = new esri.Graphic(arrow,arrowsymbol);
+        				arrowGraphic.isArrow = true;
+        				arrowGraphic.connectedGraphic = evt.graphic;
+        				evt.graphic.connectedGraphic = arrowGraphic;
+
+        				map.graphics.add(arrowGraphic);
+					}
+				});
+
 			} else {
 				editBar.deactivate();
 			}
@@ -1139,7 +1248,13 @@ EsriMap.prototype = {
 			lineSymbol.setWidth(2);
 			var lineGraphic = new esri.Graphic(geometry,lineSymbol);
 			var clearGraphic = self.createClearBtn(endPoint,lineGraphic,stopGraphics,textGraphics);
-			clearGraphic.symbol.setOffset(-20, 0);//改变清空图标位置
+			var deltx = endPoint.x - stopPoints[stopPoints.length-2].x;
+			if(deltx < 0){
+				clearGraphic.symbol.setOffset(-20,0);//改变清空图标位置
+			} else {
+				clearGraphic.symbol.setOffset(20,0);//改变清空图标位置
+			}
+			
 			self.measureGraphicLayer.add(clearGraphic);
             self.measureGraphicLayer.add(lineGraphic);
             lineGraphic.getDojoShape().moveToBack();
@@ -1174,33 +1289,62 @@ EsriMap.prototype = {
 		var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z";
         var iconColor = "#b81b1b";
         var clearSymbol = new esri.symbol.SimpleMarkerSymbol();
-        clearSymbol.setOffset(-40, 15);
+        //clearSymbol.setOffset(-40, 15);
         clearSymbol.setPath(iconPath);
         clearSymbol.setColor(new esri.Color(iconColor));
         clearSymbol.setOutline(null);
         clearSymbol.isClearBtn = true;
-        var graphic = esri.Graphic(point, clearSymbol);
+        
+        // var connectedLine = connectedGraphic.geometry;
+        // var point1 = connectedLine.paths[0][(connectedLine.paths[0].length-2)];
+        // var point2 = connectedLine.paths[0][(connectedLine.paths[0].length-1)];
+        // var deltx = point2[0] - point1[0];
+        // var delty = point2[1] - point1[1];
+        // if(deltx >= 0){
+        // 	deltx = deltx + 5;
+        // } else {
+        // 	deltx = deltx - 5;
+        // }
+
+        // if(delty >= 0){
+        // 	delty = delty + 5;
+        // } else {
+        // 	delty = delty - 5;
+        // }
+
+        //point.update(point1[0]+deltx,point1[1]+delty);
+        var graphic = esri.Graphic(point,clearSymbol);
+
         graphic.connectedGraphic = connectedGraphic;
         graphic.stopGraphics = stopGraphics;
         graphic.textGraphics = textGraphics;
         return graphic;
 	},
 
-	createArrowGraphic:function(point,connectedGraphic,arrowColor,arrowAngle){
+	createArrowGraphic:function(point,connectedGraphic,arrowColor){
 		//var iconPath = "M13.618,2.397 C10.513,-0.708 5.482,-0.713 2.383,2.386 C-0.718,5.488 -0.715,10.517 2.392,13.622 C5.497,16.727 10.529,16.731 13.627,13.632 C16.727,10.533 16.724,5.502 13.618,2.397 L13.618,2.397 Z M9.615,11.351 L7.927,9.663 L6.239,11.351 C5.55,12.04 5.032,12.64 4.21,11.819 C3.39,10.998 3.987,10.48 4.679,9.79 L6.367,8.103 L4.679,6.415 C3.989,5.726 3.39,5.208 4.21,4.386 C5.032,3.566 5.55,4.165 6.239,4.855 L7.927,6.541 L9.615,4.855 C10.305,4.166 10.82,3.565 11.642,4.386 C12.464,5.208 11.865,5.726 11.175,6.415 L9.487,8.102 L11.175,9.789 C11.864,10.48 12.464,10.998 11.642,11.819 C10.822,12.64 10.305,12.04 9.615,11.351 L9.615,11.351 Z";
-        var iconPath = "M2,2 L2,11 L10,6 L2,2";
+        //var iconPath = "M2,2 L2,11 L10,6 L2,2";
+        var iconPath = "M0,10 L5,0 L10,10 Z";
         var iconColor = "#b81b1b";
         if(arrowColor){
         	iconColor = arrowColor;
         }
+        var line = connectedGraphic.geometry;
+        var startPoint = line.paths[0][0];
+        var endPoint = line.paths[0][1];
+
+        var deltx = (endPoint[0] - startPoint[0])/(endPoint[1] - startPoint[1]);
+        var angle = (Math.atan(deltx)/Math.PI) * 180;
+
         var symbol = new esri.symbol.SimpleMarkerSymbol();
-        symbol.setOffset(3,-1);
+        if(deltx < 0){
+        	angle = angle + 180;
+        }
+        symbol.setAngle(angle);
+        //symbol.setOffset(3,-1);
         symbol.setOutline(null);
         symbol.setPath(iconPath);
         symbol.setColor(new esri.Color(iconColor));
-        if(arrowAngle){
-        	symbol.setAngle(arrowAngle);
-        }
         symbol.isArrow = true;
         var graphic = esri.Graphic(point,symbol);
         graphic.isArrow = true;
@@ -1508,6 +1652,7 @@ function Polyline(id,coordinates,symbol,spatialreference) {
 	this._isArrow = false;
 	this._arrowSize = 0;
 	this._arrowPosition = 1;
+	this._line._arrowPosition = 1;
 	this._arrowGraphic = null;
 }
 

@@ -15,4 +15,8 @@
 11| 扇形操作  | <mark>DONE<mark>  | |
 12| 图层控制  | <mark>DONE<mark>  | |
 
-关于搜索，详情请见：关于搜索.md
+修复了2017-02-07所述的几个bug：<br>
+（1）仿百度地图测距，最后的删除按钮的位置已调整，请测<br>
+（2）带箭头的线的移动，已修复<br>
+（3）箭头的颜色，已修复<br>
+（4）传入geometry的高亮函数，已添加：selectGraphicByGeometry(geometry)<br>
