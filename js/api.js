@@ -389,7 +389,7 @@ EsriMap.prototype = {
 
 	/**
 	* 打开地图上单击添加点事件
-	* @arg1 id 线的id
+	* @arg1 id 点的id
 	* @arg2 symbol, 点的symbol
 	* @arg3 spatialreference 参考系: optional
 	**/
@@ -940,14 +940,89 @@ EsriMap.prototype = {
 					}
 					
 				});
-
+				var tempGraphic;
 				editBar.on("graphic-move-start",function(evt){
 					if(evt.graphic.geometry.type=="point" && evt.graphic.isArrow){
 						//TODO
 						//防止点击在箭头上
-						//editBar.deactivate();
-						editBar.refresh();
+						editBar.deactivate();
+						//editBar.refresh();
 						//editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:isAllowedDeleteVertex});
+					} else if(evt.graphic.geometry.type == "polyline"){
+						tempGraphic = new esri.Graphic(evt.graphic.toJson());
+						var symbol = tempGraphic.symbol;
+						symbol.setStyle(esri.symbol.SimpleLineSymbol.STYLE_DASH);
+						tempGraphic.id = "tempGraphic"; 
+						//tempGraphic.setSymbol(evt.graphic.symbol);
+						evt.target._map.graphics.add(tempGraphic);
+					}
+				});
+
+				editBar.on("graphic-move-stop",function(evt){
+					var map = evt.target._map;
+					if(evt.graphic.geometry.type=="polyline" && tempGraphic){
+						map.graphics.remove(tempGraphic);
+					}
+
+					if(evt.graphic.geometry.type=="polyline" && evt.graphic._isArrow) {
+						//TODO 对于含箭头的polyline，在vertext移动以后，箭头也要跟着动
+						map.graphics.remove(evt.graphic.connectedGraphic);
+						var line = evt.graphic.geometry;
+						var arrowPosition = evt.graphic._arrowPosition;
+						var arrowPoint;
+						switch(arrowPosition){
+							case 1:
+								arrowPoint = line.getPoint(0,0); //获得线的第一个点
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+							case 2:
+								var start = line.getPoint(0,0);
+								var end = line.getPoint(0,1); 
+								var lon = (start.x + end.x)/2;
+								var lat = (start.y + end.y)/2;
+								arrowPoint = new esri.geometry.Point(lon,lat);
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+							case 3:
+								arrowPoint = line.getPoint(0,1); //获得线的最后一个点
+								arrowPoint.setSpatialReference = map.spatialReference;
+								break;
+						}
+
+						var arrow = evt.graphic.connectedGraphic.geometry;
+						arrow.update(arrowPoint.x,arrowPoint.y);
+						var arrowsymbol = evt.graphic.connectedGraphic.symbol;
+
+						var startPoint = line.getPoint(0,0);
+        				var endPoint = line.getPoint(0,1);
+
+        				var deltx = endPoint.x - startPoint.x;
+        				var delty = endPoint.y - startPoint.y;
+        				var delt = deltx/delty;
+
+        				var angle = (Math.atan(delt)/Math.PI) * 180;
+
+
+        				// if(delt < 0){
+        				// 	angle = angle + 180;
+        				// }
+        				// if(deltx < 0 && delty > 0){
+        				// 	angle = angle + 90;
+        				// } else 
+        				if(deltx > 0 && delty < 0){
+        					angle = angle + 180;
+        				} else if(deltx < 0 && delty < 0){
+        					angle = angle + 180;
+        				}
+
+        				arrowsymbol.setAngle(angle);
+        				var arrowGraphic = new esri.Graphic(arrow,arrowsymbol);
+        				arrowGraphic.isArrow = true;
+        				arrowGraphic.id = evt.graphic.id + "_arrow";
+        				arrowGraphic.connectedGraphic = evt.graphic;
+        				evt.graphic.connectedGraphic = arrowGraphic;
+
+        				map.graphics.add(arrowGraphic);
 					}
 				});
 
@@ -1008,6 +1083,7 @@ EsriMap.prototype = {
         				var arrowGraphic = new esri.Graphic(arrow,arrowsymbol);
         				arrowGraphic.isArrow = true;
         				arrowGraphic.connectedGraphic = evt.graphic;
+        				arrowGraphic.id = evt.graphic.id + "_arrow";
         				evt.graphic.connectedGraphic = arrowGraphic;
 
         				map.graphics.add(arrowGraphic);
@@ -1354,7 +1430,7 @@ EsriMap.prototype = {
         }
         var line = connectedGraphic.geometry;
         var startPoint = line.paths[0][0];
-        var endPoint = line.paths[0][1];
+        var endPoint = line.paths[0][1]
 
         var deltx = endPoint[0] - startPoint[0];
         var delty = endPoint[1] - startPoint[1];
