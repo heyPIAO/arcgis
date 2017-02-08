@@ -594,14 +594,15 @@ EsriMap.prototype = {
 		var loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
 			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
-				this._map.graphics.remove(this._map.graphics.graphics[i]);
+				var graphic = this._map.graphics.graphics[i];
 				if(this._map.graphics.graphics[i]._isArrow){
-					this._map.graphics.remove(this._map.graphics.graphics[i].connectedGraphic);
+					this._map.graphics.remove(graphic.connectedGraphic);
 				}
+				this._map.graphics.remove(graphic);
 				return true;
-				break;
 			}
 		};
+		console.log("没有id为" + id + "的graphic");
 		return false;
 	},
 
@@ -713,10 +714,12 @@ EsriMap.prototype = {
 			} else {
 				arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,graphic.symbol.color);
 			}
+			arrowGraphic.id = graphic.id + "_arrow";
 			graphic.connectedGraphic = arrowGraphic;
+			this._map.graphics.add(arrowGraphic);
 		}
+
 		this._map.graphics.add(graphic);
-		this._map.graphics.add(arrowGraphic);
 		return line;
 	},
 
@@ -726,14 +729,14 @@ EsriMap.prototype = {
 	changePointSymbol:function(id,symbol) {
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="point") {
 				this._map.graphics.graphics[i].formerSymbol = this._map.graphics.graphics[i].symbol;
 				this._map.graphics.graphics[i].setSymbol(symbol);
 				this._map.graphics.redraw();
 				return this._map.graphics.graphics[i];
-				break;
 			}
 		};
+		console.log("没有id为" + id + "的点");
 	},
 
 	/**
@@ -774,38 +777,47 @@ EsriMap.prototype = {
 		};
 	},
 
-	changePolylineSymbol:function(id,symbol,isArrow,arrowSize,arrowPosition){
+	changePolylineSymbol:function(id,symbol,isArrow,arrowColor,arrowPosition){
 		//首先找到那个graphic
 		var destGraphic;
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
 			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline" && this._map.graphics.graphics[i].geometry.id==id){
 				destGraphic = this._map.graphics.graphics[i];
-				this._map.graphics.remove(destGraphic._arrowGraphic);
+				if(destGraphic.connectedGraphic){
+					this._map.graphics.remove(destGraphic.connectedGraphic);
+				}
 				this._map.graphics.remove(destGraphic);
 				if(symbol){
 					destGraphic.symbol = symbol;
 				}
-				if(isArrow==false){
+
+				if(isArrow){
 					destGraphic._isArrow = isArrow;
-					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,null,null,destGraphic.geometry.spatialReference);
-					return line;
-				} else {
-					destGraphic._isArrow = isArrow;
-					this._map.graphics.remove(destGraphic._arrowGraphic);
-					if(arrowSize){
-						destGraphic._arrowSize = arrowSize;
+					//this._map.graphics.remove(destGraphic._arrowGraphic);
+					if(arrowColor){
+						destGraphic._arrowColor = arrowColor;
+					} else {
+						destGraphic._arrowColor = null;
 					}
 					if(arrowPosition){
 						destGraphic._arrowPosition = arrowPosition;
+					} else {
+						destGraphic._arrowPosition = 1;
 					}
-					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,destGraphic._arrowSize,destGraphic._arrowPosition,destGraphic.geometry.spatialReference);
+
+					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,destGraphic._arrowColor,destGraphic._arrowPosition,destGraphic.geometry.spatialReference);
+					return line;
+				} else {
+					destGraphic._isArrow = false;
+					//addPolyline:function(id,coordinates,symbol,isArrow,arrowColor,arrowPosition,spatialreference)
+					var line = this.addPolyline(id,destGraphic.geometry.paths,destGraphic.symbol,destGraphic._isArrow,null,null,destGraphic.geometry.spatialReference);
 					return line;
 				}
 			}
 		}
 
-		log.error("没有对应id的graphic");
+		console.log("没有对应id的graphic");
 	},
 
 	/**
@@ -973,11 +985,22 @@ EsriMap.prototype = {
 						var startPoint = line.getPoint(0,0);
         				var endPoint = line.getPoint(0,1);
 
-        				var deltx = (endPoint.x - startPoint.x)/(endPoint.y - startPoint.y);
+        				var deltx = endPoint.x - startPoint.x;
+        				var delty = endPoint.y - startPoint.y;
+        				var delt = deltx/delty;
 
-        				var angle = (Math.atan(deltx)/Math.PI) * 180;
+        				var angle = (Math.atan(delt)/Math.PI) * 180;
 
-        				if(deltx < 0){
+
+        				// if(delt < 0){
+        				// 	angle = angle + 180;
+        				// }
+        				// if(deltx < 0 && delty > 0){
+        				// 	angle = angle + 90;
+        				// } else 
+        				if(deltx > 0 && delty < 0){
+        					angle = angle + 180;
+        				} else if(deltx < 0 && delty < 0){
         					angle = angle + 180;
         				}
 
@@ -1333,13 +1356,20 @@ EsriMap.prototype = {
         var startPoint = line.paths[0][0];
         var endPoint = line.paths[0][1];
 
-        var deltx = (endPoint[0] - startPoint[0])/(endPoint[1] - startPoint[1]);
-        var angle = (Math.atan(deltx)/Math.PI) * 180;
+        var deltx = endPoint[0] - startPoint[0];
+        var delty = endPoint[1] - startPoint[1];
+        var delt = deltx/delty;
+
+        var angle = (Math.atan(delt)/Math.PI) * 180;
 
         var symbol = new esri.symbol.SimpleMarkerSymbol();
-        if(deltx < 0){
+
+        if(deltx > 0 && delty < 0){
+        	angle = angle + 180;
+        } else if(deltx < 0 && delty < 0){
         	angle = angle + 180;
         }
+
         symbol.setAngle(angle);
         //symbol.setOffset(3,-1);
         symbol.setOutline(null);

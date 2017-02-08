@@ -117,7 +117,7 @@ function deleteAllPoint(){
 
 function testDeleteGraphicById(){
 	map.deleteGraphicById("testPoint");
-	map.deleteGraphicById("test");
+	map.deleteGraphicById("testLine");
 	map.deleteGraphicById("testPolygon");
 }
 
@@ -129,7 +129,7 @@ function testChangePointSymbol(){
 }
 
 function testChangePolylineSymbol(){
-	map.changePolylineSymbol("test",new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]),1),true,10,2);
+	map.changePolylineSymbol("testLine",new esri.symbol.SimpleLineSymbol(esri.symbol.SimpleLineSymbol.STYLE_SOLID,new esri.Color([255,0,0]),1),true,null,2);
 }
 
 function testBackSymbol(){
