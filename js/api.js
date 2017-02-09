@@ -340,6 +340,7 @@ EsriMap.prototype = {
 		}
 		var graphic = new esri.Graphic(point._point,point._symbol);
 		graphic.id = point._id;
+		graphic.geometry.id = point._id;
 		graphic.formerSymbol = point._formerSymbol;
 		this._map.graphics.add(graphic);
 	},
@@ -365,6 +366,7 @@ EsriMap.prototype = {
 			}	
 			graphic = new esri.Graphic(point._point,point._symbol);
 			graphic.id = point._id;
+			graphic.geometry.id = point._id;
 			graphic.formerSymbol = point._formerSymbol;
 			this._map.graphics.add(graphic);
 		}
@@ -438,21 +440,21 @@ EsriMap.prototype = {
 			case "point":
 				//同样的位子再打一个点标示选中
 				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
-				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.id;
 				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPointSymbol;
 				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
 				this.param.esrimap.selectedGraphicLayer.redraw();
 				break;
 			case "polyline": 
 				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
-				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.id;
 				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPolylineSymbol;
 				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
 				this.param.esrimap.selectedGraphicLayer.redraw();
 				break;
 			case "polygon": 
 				this.param.esrimap.selectedGraphic.geometry = evt.graphic.geometry;
-				this.param.esrimap.selectedGraphic.id = evt.graphic.geometry.id;
+				this.param.esrimap.selectedGraphic.id = evt.graphic.id;
 				this.param.esrimap.selectedGraphic.symbol = this.param.esrimap.selectedPolygonSymbol;
 				this.param.esrimap.selectedGraphicLayer.add(this.param.esrimap.selectedGraphic);
 				this.param.esrimap.selectedGraphicLayer.redraw();
@@ -517,26 +519,26 @@ EsriMap.prototype = {
 		var loop = this._map.graphics.graphics.length;
 		
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id){
 				switch(this._map.graphics.graphics[i].geometry.type){
 					case "point":
 						//同样的位子再打一个点标示选中
 						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
-						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].id;
 						this.selectedGraphic.symbol = this.selectedPointSymbol;
 						this.selectedGraphicLayer.add(this.selectedGraphic);
 						this.selectedGraphicLayer.redraw();
 						break;
 					case "polyline":
 						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
-						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].id;
 						this.selectedGraphic.symbol = this.selectedPolylineSymbol;
 						this.selectedGraphicLayer.add(this.selectedGraphic);
 						this.selectedGraphicLayer.redraw();
 						break;
 					case "polygon":
 						this.selectedGraphic.geometry = this._map.graphics.graphics[i].geometry;
-						this.selectedGraphic.id = this._map.graphics.graphics[i].geometry.id;
+						this.selectedGraphic.id = this._map.graphics.graphics[i].id;
 						this.selectedGraphic.symbol = this.selectedPolygonSymbol;
 						this.selectedGraphicLayer.add(this.selectedGraphic);
 						this.selectedGraphicLayer.redraw();
@@ -593,7 +595,7 @@ EsriMap.prototype = {
 	deleteGraphicById:function(id){
 		var loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.id==id){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id){
 				var graphic = this._map.graphics.graphics[i];
 				if(this._map.graphics.graphics[i]._isArrow){
 					this._map.graphics.remove(graphic.connectedGraphic);
@@ -679,6 +681,7 @@ EsriMap.prototype = {
 		}
 		var graphic = new esri.Graphic(line._line,line._symbol);
 		graphic.id = line._id;
+		graphic.geometry.id = line._id;
 		if(isArrow){
 			line._isArrow = isArrow;
 			line._arrowPosition = arrowPosition;
@@ -715,6 +718,7 @@ EsriMap.prototype = {
 				arrowGraphic = this.createArrowGraphic(arrowPoint,graphic,graphic.symbol.color);
 			}
 			arrowGraphic.id = graphic.id + "_arrow";
+			arrowGraphic.geometry.id = graphic.id + "_arrow";
 			graphic.connectedGraphic = arrowGraphic;
 			this._map.graphics.add(arrowGraphic);
 		}
@@ -782,7 +786,7 @@ EsriMap.prototype = {
 		var destGraphic;
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline" && this._map.graphics.graphics[i].geometry.id==id){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="polyline" && this._map.graphics.graphics[i].id==id){
 				destGraphic = this._map.graphics.graphics[i];
 				if(destGraphic.connectedGraphic){
 					this._map.graphics.remove(destGraphic.connectedGraphic);
@@ -834,6 +838,7 @@ EsriMap.prototype = {
 		}
 		var graphic = new esri.Graphic(polygon._polygon,polygon._symbol);
 		graphic.id = polygon._id;
+		graphic.geometry.id = polygon._id;
 		this._map.graphics.add(graphic);
 		return id;
 	},
