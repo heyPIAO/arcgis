@@ -765,7 +765,7 @@ EsriMap.prototype = {
 	updatePoint:function(id,lon,lat){
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && this._map.graphics.graphics[i].geometry.id==id && !(this._map.graphics.graphics[i].isArrow)){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && this._map.graphics.graphics[i].id==id && !(this._map.graphics.graphics[i].isArrow)){
 				var tmp = esri.geometry.Point(this._map.graphics.graphics[i].geometry);
 				tmp.update(lon,lat);
 				//console.log(tmp);
