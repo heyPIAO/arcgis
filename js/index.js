@@ -137,7 +137,7 @@ function testBackSymbol(){
 }
 
 function testUpdatePoint(){
-	map.updatePoint("testPoint",590438.9599952165,3377665.4707631157);
+	map.updatePoint("testPoint",115.00,50.00);
 }
 
 function testAddPolygon(){

@@ -729,7 +729,7 @@ EsriMap.prototype = {
 	changePointSymbol:function(id,symbol) {
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="point") {
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].id==id && this._map.graphics.graphics[i].geometry.type=="point" && !(this._map.graphics.graphics[i].isArrow)) {
 				this._map.graphics.graphics[i].formerSymbol = this._map.graphics.graphics[i].symbol;
 				this._map.graphics.graphics[i].setSymbol(symbol);
 				this._map.graphics.redraw();
@@ -745,7 +745,7 @@ EsriMap.prototype = {
 	backToFormerSymbol:function(){
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point"){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && !(this._map.graphics.graphics[i].isArrow)){
 				if(this._map.graphics.graphics[i].formerSymbol!=this._map.graphics.graphics[i].symbol){
 					var tmp = this._map.graphics.graphics[i].symbol;
 					this._map.graphics.graphics[i].setSymbol(this._map.graphics.graphics[i].formerSymbol);
@@ -765,7 +765,7 @@ EsriMap.prototype = {
 	updatePoint:function(id,lon,lat){
 		loop = this._map.graphics.graphics.length;
 		for (var i=0;i<loop;i++){
-			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && this._map.graphics.graphics[i].geometry.id==id){
+			if(this._map.graphics.graphics[i] && this._map.graphics.graphics[i].geometry.type=="point" && this._map.graphics.graphics[i].geometry.id==id && !(this._map.graphics.graphics[i].isArrow)){
 				var tmp = esri.geometry.Point(this._map.graphics.graphics[i].geometry);
 				tmp.update(lon,lat);
 				//console.log(tmp);
@@ -896,6 +896,9 @@ EsriMap.prototype = {
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:false,allowAddVertices:false});
 					//editBar.activate(esri.toolbars.Edit.MOVE,evt.graphic);
 					isAllowedDeleteVertex = false;
+				} else if(evt.graphic.geometry.type=="point" && evt.graphic.isArrow){
+					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic.connectedGraphic,{allowDeleteVertices:false,allowAddVertices:false});
+					isAllowedDeleteVertex = false;
 				} else {
 					editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:true});
 					isAllowedDeleteVertex = true;
@@ -946,6 +949,8 @@ EsriMap.prototype = {
 						//TODO
 						//防止点击在箭头上
 						editBar.deactivate();
+						//editBar._graphic = evt.graphic.connectedGraphic;
+						//editBar._geo = evt.graphic.connectedGraphic.geometry;
 						//editBar.refresh();
 						//editBar.activate(esri.toolbars.Edit.EDIT_VERTICES|esri.toolbars.Edit.MOVE,evt.graphic,{allowDeleteVertices:isAllowedDeleteVertex});
 					} else if(evt.graphic.geometry.type == "polyline"){
@@ -1091,7 +1096,9 @@ EsriMap.prototype = {
 				});
 
 			} else {
-				editBar.deactivate();
+				//TODO
+				//console.log("请点击需要操作的图形");
+				//editBar.deactivate();
 			}
 		});
 	},
