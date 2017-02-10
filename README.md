@@ -15,4 +15,4 @@
 11| 扇形操作  | <mark>DONE<mark>  | |
 12| 图层控制  | <mark>DONE<mark>  | |
 
-修复了2017-02-09所述的几个bug。回复已在txt中。
+修复了2017-02-10所述关于symbol的bug。

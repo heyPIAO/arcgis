@@ -362,7 +362,7 @@ EsriMap.prototype = {
 				point = new Point(obj[i].lon,obj[i].lat,this._map.spatialReference,obj[i].id);
 			}
 			if(symbol){
-				point.setSymbol(this.param.symbol);
+				point.setSymbol(symbol);
 			}	
 			graphic = new esri.Graphic(point._point,point._symbol);
 			graphic.id = point._id;
